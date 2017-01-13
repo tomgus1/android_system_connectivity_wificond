@@ -23,6 +23,7 @@
 #include <binder/Status.h>
 
 #include "android/net/wifi/BnWifiScannerImpl.h"
+#include "wificond/net/netlink_utils.h"
 
 namespace android {
 namespace wificond {
@@ -31,14 +32,34 @@ class ScanUtils;
 
 class ScannerImpl : public android::net::wifi::BnWifiScannerImpl {
  public:
-  ScannerImpl(uint32_t interface_index_,
+  ScannerImpl(uint32_t interface_index,
+              const BandInfo& band_info,
+              const ScanCapabilities& scan_capabilities,
+              const WiphyFeatures& wiphy_features,
               ScanUtils* scan_utils_);
   ~ScannerImpl();
+  // Returns a vector of available frequencies for 2.4GHz channels.
+  ::android::binder::Status getAvailable2gChannels(
+      ::std::vector<int32_t>* out_frequencies) override;
+  // Returns a vector of available frequencies for 5GHz non-DFS channels.
+  ::android::binder::Status getAvailable5gNonDFSChannels(
+      ::std::vector<int32_t>* out_frequencies) override;
+  // Returns a vector of available frequencies for DFS channels.
+  ::android::binder::Status getAvailableDFSChannels(
+      ::std::vector<int32_t>* out_frequencies) override;
   void Invalidate() { valid_ = false; }
 
  private:
+  bool CheckIsValid();
+
   bool valid_;
   uint32_t interface_index_;
+
+  // Scanning relevant capability information for this wiphy/interface.
+  const BandInfo band_info_;
+  const ScanCapabilities scan_capabilities_;
+  const WiphyFeatures wiphy_features_;
+
   ScanUtils* scan_utils_;
 
   DISALLOW_COPY_AND_ASSIGN(ScannerImpl);

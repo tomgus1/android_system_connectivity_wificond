@@ -14,6 +14,8 @@
 
 LOCAL_PATH := $(call my-dir)
 wificond_cpp_flags := -std=c++11 -Wall -Werror -Wno-unused-parameter
+# TODO(b/33211652): Remove once ScannerImpl is fleshed out.
+wificond_cpp_flags += -Wno-unused-private-field
 wificond_parent_dir := $(LOCAL_PATH)/../
 wificond_includes := \
     $(wificond_parent_dir)
@@ -56,7 +58,12 @@ LOCAL_SRC_FILES := \
     looper_backed_event_loop.cpp \
     rtt/rtt_controller_binder.cpp \
     rtt/rtt_controller_impl.cpp \
+    scanning/channel_settings.cpp \
+    scanning/hidden_network.cpp \
+    scanning/pno_network.cpp \
+    scanning/pno_settings.cpp \
     scanning/scan_result.cpp \
+    scanning/single_scan_settings.cpp \
     scanning/scan_utils.cpp \
     scanning/scanner_impl.cpp \
     server.cpp
@@ -105,7 +112,10 @@ LOCAL_SRC_FILES := \
     aidl/android/net/wifi/IRttController.aidl \
     aidl/android/net/wifi/IWificond.aidl \
     aidl/android/net/wifi/IWifiScannerImpl.aidl \
-    scanning/scan_result.cpp
+    scanning/channel_settings.cpp \
+    scanning/hidden_network.cpp \
+    scanning/scan_result.cpp \
+    scanning/single_scan_settings.cpp
 LOCAL_SHARED_LIBRARIES := \
     libbinder
 include $(BUILD_STATIC_LIBRARY)
@@ -148,6 +158,7 @@ LOCAL_SRC_FILES := \
     tests/nl80211_attribute_unittest.cpp \
     tests/nl80211_packet_unittest.cpp \
     tests/scan_result_unittest.cpp \
+    tests/scan_settings_unittest.cpp \
     tests/server_unittest.cpp
 LOCAL_STATIC_LIBRARIES := \
     libgmock \
@@ -176,6 +187,7 @@ LOCAL_SRC_FILES := \
     tests/integration/ap_interface_test.cpp \
     tests/integration/client_interface_test.cpp \
     tests/integration/life_cycle_test.cpp \
+    tests/integration/scanner_test.cpp \
     tests/integration/service_test.cpp \
     tests/main.cpp \
     tests/shell_unittest.cpp

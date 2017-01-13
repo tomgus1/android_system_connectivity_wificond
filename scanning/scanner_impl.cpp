@@ -22,23 +22,62 @@
 
 #include "wificond/scanning/scan_utils.h"
 
+using android::binder::Status;
+using std::vector;
+
 namespace android {
 namespace wificond {
 
 ScannerImpl::ScannerImpl(uint32_t interface_index,
+                         const BandInfo& band_info,
+                         const ScanCapabilities& scan_capabilities,
+                         const WiphyFeatures& wiphy_features,
                          ScanUtils* scan_utils)
     : valid_(true),
       interface_index_(interface_index),
+      band_info_(band_info),
+      scan_capabilities_(scan_capabilities),
+      wiphy_features_(wiphy_features),
       scan_utils_(scan_utils) {
-  // Keep compiler happy.
-  // Delete this when implementions are checked in.
-  if (scan_utils_ == nullptr) {
-    LOG(ERROR) << "Invalid ScanUtils for ScannerImpl on interface: "
-               << interface_index_;
-  }
 }
 
 ScannerImpl::~ScannerImpl() {
+}
+
+bool ScannerImpl::CheckIsValid() {
+  if (!valid_) {
+    LOG(DEBUG) << "Calling on a invalid scanner object."
+               << "Underlying client interface object was destroyed.";
+  }
+  return valid_;
+}
+
+Status ScannerImpl::getAvailable2gChannels(vector<int32_t>* out_frequencies) {
+  if (!CheckIsValid()) {
+    return Status::ok();
+  }
+  *out_frequencies = vector<int32_t>(band_info_.band_2g.begin(),
+                                     band_info_.band_2g.end());
+  return Status::ok();
+}
+
+Status ScannerImpl::getAvailable5gNonDFSChannels(
+    vector<int32_t>* out_frequencies) {
+  if (!CheckIsValid()) {
+    return Status::ok();
+  }
+  *out_frequencies = vector<int32_t>(band_info_.band_5g.begin(),
+                                     band_info_.band_5g.end());
+  return Status::ok();
+}
+
+Status ScannerImpl::getAvailableDFSChannels(vector<int32_t>* out_frequencies) {
+  if (!CheckIsValid()) {
+    return Status::ok();
+  }
+  *out_frequencies = vector<int32_t>(band_info_.band_dfs.begin(),
+                                     band_info_.band_dfs.end());
+  return Status::ok();
 }
 
 }  // namespace wificond
