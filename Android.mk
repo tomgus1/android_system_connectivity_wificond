@@ -108,12 +108,16 @@ LOCAL_SRC_FILES := \
     aidl/android/net/wifi/IANQPDoneCallback.aidl \
     aidl/android/net/wifi/IClientInterface.aidl \
     aidl/android/net/wifi/IInterfaceEventCallback.aidl \
+    aidl/android/net/wifi/IPnoScanEvent.aidl \
     aidl/android/net/wifi/IRttClient.aidl \
     aidl/android/net/wifi/IRttController.aidl \
+    aidl/android/net/wifi/IScanEvent.aidl \
     aidl/android/net/wifi/IWificond.aidl \
     aidl/android/net/wifi/IWifiScannerImpl.aidl \
     scanning/channel_settings.cpp \
     scanning/hidden_network.cpp \
+    scanning/pno_network.cpp \
+    scanning/pno_settings.cpp \
     scanning/scan_result.cpp \
     scanning/single_scan_settings.cpp
 LOCAL_SHARED_LIBRARIES := \

@@ -47,12 +47,41 @@ class ScannerImpl : public android::net::wifi::BnWifiScannerImpl {
   // Returns a vector of available frequencies for DFS channels.
   ::android::binder::Status getAvailableDFSChannels(
       ::std::vector<int32_t>* out_frequencies) override;
+  // Get the latest scan results from kernel.
+  ::android::binder::Status getScanResults(
+      std::vector<com::android::server::wifi::wificond::NativeScanResult>*
+          out_scan_results) override;
+  ::android::binder::Status scan(
+      const ::com::android::server::wifi::wificond::SingleScanSettings&
+          scan_settings,
+      bool* out_success) override;
+  ::android::binder::Status startPnoScan(
+      const ::com::android::server::wifi::wificond::PnoSettings& pno_settings,
+      bool* out_success) override;
+  ::android::binder::Status stopPnoScan(bool* out_success) override;
+
+  ::android::binder::Status subscribeScanEvents(
+      const ::android::sp<::android::net::wifi::IScanEvent>& handler) override;
+  ::android::binder::Status unsubscribeScanEvents() override;
+  ::android::binder::Status subscribePnoScanEvents(
+      const ::android::sp<::android::net::wifi::IPnoScanEvent>& handler) override;
+  ::android::binder::Status unsubscribePnoScanEvents() override;
   void Invalidate() { valid_ = false; }
 
  private:
   bool CheckIsValid();
+  void OnScanResultsReady(
+      uint32_t interface_index,
+      bool aborted,
+      std::vector<std::vector<uint8_t>>& ssids,
+      std::vector<uint32_t>& frequencies);
+  void OnSchedScanResultsReady(uint32_t interface_index, bool scan_stopped);
 
+
+  // Boolean variables describing current scanner status.
   bool valid_;
+  bool pno_scan_started_;
+
   uint32_t interface_index_;
 
   // Scanning relevant capability information for this wiphy/interface.
@@ -60,7 +89,10 @@ class ScannerImpl : public android::net::wifi::BnWifiScannerImpl {
   const ScanCapabilities scan_capabilities_;
   const WiphyFeatures wiphy_features_;
 
+
   ScanUtils* scan_utils_;
+  ::android::sp<::android::net::wifi::IPnoScanEvent> pno_scan_event_handler_;
+  ::android::sp<::android::net::wifi::IScanEvent> scan_event_handler_;
 
   DISALLOW_COPY_AND_ASSIGN(ScannerImpl);
 };
