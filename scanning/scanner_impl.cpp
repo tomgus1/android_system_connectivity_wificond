@@ -26,7 +26,6 @@
 using android::binder::Status;
 using android::net::wifi::IPnoScanEvent;
 using android::net::wifi::IScanEvent;
-using android::String16;
 using android::sp;
 using com::android::server::wifi::wificond::NativeScanResult;
 using com::android::server::wifi::wificond::PnoSettings;
@@ -46,18 +45,31 @@ ScannerImpl::ScannerImpl(uint32_t interface_index,
                          const WiphyFeatures& wiphy_features,
                          ScanUtils* scan_utils)
     : valid_(true),
+      scan_started_(false),
       pno_scan_started_(false),
       interface_index_(interface_index),
       band_info_(band_info),
       scan_capabilities_(scan_capabilities),
       wiphy_features_(wiphy_features),
       scan_utils_(scan_utils),
-      scan_event_handler_(nullptr) {}
+      scan_event_handler_(nullptr) {
+  // Subscribe one-shot scan result notification from kernel.
+  scan_utils_->SubscribeScanResultNotification(
+      interface_index_,
+      std::bind(&ScannerImpl::OnScanResultsReady,
+                this,
+                _1, _2, _3, _4));
+  // Subscribe scheduled scan result notification from kernel.
+  scan_utils_->SubscribeSchedScanResultNotification(
+      interface_index_,
+      std::bind(&ScannerImpl::OnSchedScanResultsReady,
+                this,
+                _1, _2));
+}
 
 ScannerImpl::~ScannerImpl() {
-  if (scan_event_handler_ != nullptr) {
-    scan_utils_->UnsubscribeScanResultNotification(interface_index_);
-  }
+  scan_utils_->UnsubscribeScanResultNotification(interface_index_);
+  scan_utils_->UnsubscribeSchedScanResultNotification(interface_index_);
 }
 
 bool ScannerImpl::CheckIsValid() {
@@ -112,6 +124,9 @@ Status ScannerImpl::scan(const SingleScanSettings& scan_settings,
     return Status::ok();
   }
 
+  if (scan_started_) {
+    LOG(WARNING) << "Scan already started";
+  }
   bool random_mac =  wiphy_features_.supports_random_mac_oneshot_scan;
 
   if (scan_settings.is_full_scan_) {
@@ -119,13 +134,21 @@ Status ScannerImpl::scan(const SingleScanSettings& scan_settings,
       *out_success = false;
       return Status::ok();
     }
+    scan_started_ = true;
+    return Status::ok();
   }
 
   // Initialize it with an empty ssid for a wild card scan.
   vector<vector<uint8_t>> ssids = {{0}};
   for (auto& network : scan_settings.hidden_networks_) {
+    if (ssids.size() + 1 > scan_capabilities_.max_num_scan_ssids) {
+      LOG(WARNING) << "Skip scan ssid for single scan: "
+                   << string(network.ssid_.begin(), network.ssid_.end());
+      continue;
+    }
     ssids.push_back(network.ssid_);
   }
+
   vector<uint32_t> freqs;
   for (auto& channel : scan_settings.channel_settings_) {
     freqs.push_back(channel.frequency_);
@@ -133,19 +156,20 @@ Status ScannerImpl::scan(const SingleScanSettings& scan_settings,
 
   if (!scan_utils_->Scan(interface_index_, random_mac, ssids, freqs)) {
     *out_success = false;
-    LOG(ERROR) << "Failed to start a scan";
     return Status::ok();
   }
+  scan_started_ = true;
   *out_success = true;
   return Status::ok();
 }
 
 Status ScannerImpl::startPnoScan(const PnoSettings& pno_settings,
                                  bool* out_success) {
-  if (pno_scan_started_) {
-    LOG(ERROR) << "Pno scan already started";
-    *out_success = false;
+  if (!CheckIsValid()) {
     return Status::ok();
+  }
+  if (pno_scan_started_) {
+    LOG(WARNING) << "Pno scan already started";
   }
   // An empty ssid for a wild card scan.
   vector<vector<uint8_t>> scan_ssids = {{0}};
@@ -154,12 +178,24 @@ Status ScannerImpl::startPnoScan(const PnoSettings& pno_settings,
   vector<uint32_t> freqs;
 
   for (auto& network : pno_settings.pno_networks_) {
-    match_ssids.push_back(network.ssid_);
     // Add hidden network ssid.
     if (network.is_hidden_) {
+      if (scan_ssids.size() + 1 > scan_capabilities_.max_num_sched_scan_ssids) {
+        LOG(WARNING) << "Skip scan ssid for pno scan: "
+                     << string(network.ssid_.begin(), network.ssid_.end());
+        continue;
+      }
       scan_ssids.push_back(network.ssid_);
     }
+
+    if (match_ssids.size() + 1 > scan_capabilities_.max_match_sets) {
+      LOG(WARNING) << "Skip match ssid for pno scan: "
+                   << string(network.ssid_.begin(), network.ssid_.end());
+      continue;
+    }
+    match_ssids.push_back(network.ssid_);
   }
+
   bool random_mac = wiphy_features_.supports_random_mac_sched_scan;
 
   if (!scan_utils_->StartScheduledScan(interface_index_,
@@ -180,10 +216,12 @@ Status ScannerImpl::startPnoScan(const PnoSettings& pno_settings,
 }
 
 Status ScannerImpl::stopPnoScan(bool* out_success) {
-  if (!pno_scan_started_) {
-    LOG(ERROR) << "No pno scan started";
-    *out_success = false;
+  if (!CheckIsValid()) {
     return Status::ok();
+  }
+
+  if (!pno_scan_started_) {
+    LOG(WARNING) << "No pno scan started";
   }
   if (!scan_utils_->StopScheduledScan(interface_index_)) {
     *out_success = false;
@@ -195,48 +233,39 @@ Status ScannerImpl::stopPnoScan(bool* out_success) {
 }
 
 Status ScannerImpl::subscribeScanEvents(const sp<IScanEvent>& handler) {
+  if (!CheckIsValid()) {
+    return Status::ok();
+  }
+
   if (scan_event_handler_ != nullptr) {
     LOG(ERROR) << "Found existing scan events subscriber."
                << " This subscription request will unsubscribe it";
   }
   scan_event_handler_ = handler;
-  // Subscribe one-shot scan result notification.
-  scan_utils_->SubscribeScanResultNotification(
-      interface_index_,
-      std::bind(&ScannerImpl::OnScanResultsReady,
-                this,
-                _1, _2, _3, _4));
-
   return Status::ok();
 }
 
 Status ScannerImpl::unsubscribeScanEvents() {
-
-  scan_utils_->UnsubscribeScanResultNotification(interface_index_);
   scan_event_handler_ = nullptr;
   return Status::ok();
 }
 
 
 Status ScannerImpl::subscribePnoScanEvents(const sp<IPnoScanEvent>& handler) {
+  if (!CheckIsValid()) {
+    return Status::ok();
+  }
+
   if (pno_scan_event_handler_ != nullptr) {
     LOG(ERROR) << "Found existing pno scan events subscriber."
                << " This subscription request will unsubscribe it";
   }
   pno_scan_event_handler_ = handler;
 
-  // Subscribe scheduled scan result notification.
-  scan_utils_->SubscribeSchedScanResultNotification(
-      interface_index_,
-      std::bind(&ScannerImpl::OnSchedScanResultsReady,
-                this,
-                _1, _2));
-
   return Status::ok();
 }
 
 Status ScannerImpl::unsubscribePnoScanEvents() {
-  scan_utils_->UnsubscribeSchedScanResultNotification(interface_index_);
   pno_scan_event_handler_ = nullptr;
   return Status::ok();
 }
@@ -246,6 +275,7 @@ void ScannerImpl::OnScanResultsReady(
     bool aborted,
     vector<vector<uint8_t>>& ssids,
     vector<uint32_t>& frequencies) {
+  scan_started_ = false;
   if (scan_event_handler_ != nullptr) {
     // TODO: Pass other parameters back once we find framework needs them.
     if (aborted) {
@@ -266,6 +296,7 @@ void ScannerImpl::OnSchedScanResultsReady(uint32_t interface_index,
       if (pno_scan_started_) {
         pno_scan_event_handler_->OnPnoScanFailed();
       }
+      pno_scan_started_ = false;
     } else {
       pno_scan_event_handler_->OnPnoNetworkFound();
     }
