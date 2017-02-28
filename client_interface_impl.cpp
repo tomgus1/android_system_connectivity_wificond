@@ -92,10 +92,14 @@ ClientInterfaceImpl::ClientInterfaceImpl(
   netlink_utils_->SubscribeMlmeEvent(
       interface_index_,
       mlme_event_handler_.get());
-  netlink_utils_->GetWiphyInfo(wiphy_index_,
+  if (!netlink_utils_->GetWiphyInfo(wiphy_index_,
                                &band_info_,
                                &scan_capabilities_,
-                               &wiphy_features_);
+                               &wiphy_features_)) {
+    LOG(ERROR) << "Failed to get wiphy info from kernel";
+  }
+  LOG(INFO) << "create scanner for interface with index: "
+            << (int)interface_index_;
   scanner_ = new ScannerImpl(interface_index_,
                              band_info_,
                              scan_capabilities_,

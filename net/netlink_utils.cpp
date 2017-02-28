@@ -25,7 +25,6 @@
 #include <android-base/logging.h>
 
 #include "wificond/net/mlme_event_handler.h"
-#include "wificond/net/netlink_manager.h"
 #include "wificond/net/nl80211_packet.h"
 
 using std::string;
@@ -260,7 +259,7 @@ bool NetlinkUtils::ParseBandInfo(const NL80211Packet* const packet,
   for (unsigned int band_index = 0; band_index < bands.size(); band_index++) {
     NL80211NestedAttr freqs_attr(0);
     if (!bands[band_index].GetAttribute(NL80211_BAND_ATTR_FREQS, &freqs_attr)) {
-      LOG(ERROR) << "Failed to get NL80211_BAND_ATTR_FREQS";
+      LOG(DEBUG) << "Failed to get NL80211_BAND_ATTR_FREQS";
       continue;
     }
     vector<NL80211NestedAttr> freqs;
@@ -370,6 +369,16 @@ void NetlinkUtils::SubscribeMlmeEvent(uint32_t interface_index,
 
 void NetlinkUtils::UnsubscribeMlmeEvent(uint32_t interface_index) {
   netlink_manager_->UnsubscribeMlmeEvent(interface_index);
+}
+
+void NetlinkUtils::SubscribeRegDomainChange(
+    uint32_t wiphy_index,
+    OnRegDomainChangedHandler handler) {
+  netlink_manager_->SubscribeRegDomainChange(wiphy_index, handler);
+}
+
+void NetlinkUtils::UnsubscribeRegDomainChange(uint32_t wiphy_index) {
+  netlink_manager_->UnsubscribeRegDomainChange(wiphy_index);
 }
 
 }  // namespace wificond
