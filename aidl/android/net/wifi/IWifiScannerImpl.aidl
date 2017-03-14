@@ -24,13 +24,16 @@ import com.android.server.wifi.wificond.SingleScanSettings;
 
 interface IWifiScannerImpl {
   // Returns an array of available frequencies for 2.4GHz channels.
-  int[] getAvailable2gChannels();
+  // Returrns null on failure.
+  @nullable int[] getAvailable2gChannels();
 
   // Returns an array of available frequencies for 5GHz non-DFS channels.
-  int[] getAvailable5gNonDFSChannels();
+  // Returrns null on failure.
+  @nullable int[] getAvailable5gNonDFSChannels();
 
   // Returns an array of available frequencies for DFS channels.
-  int[] getAvailableDFSChannels();
+  // Returrns null on failure.
+  @nullable int[] getAvailableDFSChannels();
 
   // Get the latest scan results from kernel.
   NativeScanResult[] getScanResults();
@@ -41,18 +44,18 @@ interface IWifiScannerImpl {
   // Subscribe single scanning events.
   // Scanner assumes there is only one subscriber.
   // This call will replace any existing |handler|.
-  void subscribeScanEvents(IScanEvent handler);
+  oneway void subscribeScanEvents(IScanEvent handler);
 
   // Unsubscribe single scanning events .
-  void unsubscribeScanEvents();
+  oneway void unsubscribeScanEvents();
 
   // Subscribe Pno scanning events.
   // Scanner assumes there is only one subscriber.
   // This call will replace any existing |handler|.
-  void subscribePnoScanEvents(IPnoScanEvent handler);
+  oneway void subscribePnoScanEvents(IPnoScanEvent handler);
 
   // Unsubscribe Pno scanning events .
-  void unsubscribePnoScanEvents();
+  oneway void unsubscribePnoScanEvents();
 
   // Request a scheduled scan.
   boolean startPnoScan(in PnoSettings pnoSettings);

@@ -39,9 +39,9 @@ bool GetCommonFields(const NL80211Packet* packet,
      LOG(ERROR) << "Failed to get NL80211_ATTR_IFINDEX";
      return false;
   }
+  // Some MLME events do not contain MAC address.
   if (!packet->GetAttributeValue(NL80211_ATTR_MAC, bssid)) {
-    LOG(ERROR) << "Failed to get NL80211_ATTR_MAC";
-    return false;
+    LOG(DEBUG) << "Failed to get NL80211_ATTR_MAC";
   }
   return true;
 }
@@ -65,6 +65,8 @@ unique_ptr<MlmeAssociateEvent> MlmeAssociateEvent::InitFromPacket(
   // TODO(nywang): Parse NL80211_ATTR_FRAME 80211 management frame and get
   // status code.
   associate_event->status_code_ = 0;
+  associate_event->is_timeout_ = packet->HasAttribute(NL80211_ATTR_TIMED_OUT);
+
   return associate_event;
 }
 
@@ -85,6 +87,8 @@ unique_ptr<MlmeConnectEvent> MlmeConnectEvent::InitFromPacket(
     LOG(WARNING) << "Failed to get NL80211_ATTR_STATUS_CODE";
     connect_event->status_code_ = 0;
   }
+  connect_event->is_timeout_ = packet->HasAttribute(NL80211_ATTR_TIMED_OUT);
+
   return connect_event;
 }
 
@@ -107,6 +111,34 @@ unique_ptr<MlmeRoamEvent> MlmeRoamEvent::InitFromPacket(
   }
 
   return roam_event;
+}
+
+unique_ptr<MlmeDisconnectEvent> MlmeDisconnectEvent::InitFromPacket(
+    const NL80211Packet* packet) {
+  if (packet->GetCommand() != NL80211_CMD_DISCONNECT) {
+    return nullptr;
+  }
+  unique_ptr<MlmeDisconnectEvent> disconnect_event(new MlmeDisconnectEvent());
+  if (!GetCommonFields(packet,
+                       &(disconnect_event->interface_index_),
+                       &(disconnect_event->bssid_))){
+    return nullptr;
+  }
+  return disconnect_event;
+}
+
+unique_ptr<MlmeDisassociateEvent> MlmeDisassociateEvent::InitFromPacket(
+    const NL80211Packet* packet) {
+  if (packet->GetCommand() != NL80211_CMD_DISASSOCIATE) {
+    return nullptr;
+  }
+  unique_ptr<MlmeDisassociateEvent> disassociate_event(new MlmeDisassociateEvent());
+  if (!GetCommonFields(packet,
+                       &(disassociate_event->interface_index_),
+                       &(disassociate_event->bssid_))){
+    return nullptr;
+  }
+  return disassociate_event;
 }
 
 }  // namespace wificond

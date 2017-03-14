@@ -88,7 +88,7 @@ bool ScanUtils::GetScanResult(uint32_t interface_index,
   }
   if (response.empty()) {
     LOG(INFO) << "Unexpected empty scan result!";
-    return false;
+    return true;
   }
 
   for (auto& packet : response) {
@@ -161,6 +161,12 @@ bool ScanUtils::ParseScanResult(unique_ptr<const NL80211Packet> packet,
     if (!bss.GetAttributeValue(NL80211_BSS_TSF, &tsf)) {
       LOG(ERROR) << "Failed to get TSF from scan result packet";
       return false;
+    }
+    uint64_t beacon_tsf;
+    if (bss.GetAttributeValue(NL80211_BSS_BEACON_TSF, &beacon_tsf)) {
+      if (beacon_tsf > tsf) {
+        tsf = beacon_tsf;
+      }
     }
     int32_t signal;
     if (!bss.GetAttributeValue(NL80211_BSS_SIGNAL_MBM, &signal)) {
@@ -331,14 +337,10 @@ bool ScanUtils::StartScheduledScan(
     NL80211NestedAttr match_group(i);
     match_group.AddAttribute(
         NL80211Attr<vector<uint8_t>>(NL80211_SCHED_SCAN_MATCH_ATTR_SSID, match_ssids[i]));
-    // TODO(nywang): Add RSSI threshold for every SSID respectively.
+    match_group.AddAttribute(
+        NL80211Attr<int32_t>(NL80211_SCHED_SCAN_MATCH_ATTR_RSSI, rssi_threshold));
     scan_match_attr.AddAttribute(match_group);
   }
-  // Global RSSI threshold.
-  NL80211NestedAttr global_rssi_match_group(match_ssids.size());
-  global_rssi_match_group.AddAttribute(
-      NL80211Attr<int32_t>(NL80211_SCHED_SCAN_MATCH_ATTR_RSSI, rssi_threshold));
-  scan_match_attr.AddAttribute(global_rssi_match_group);
 
   // Append all attributes to the NL80211_CMD_START_SCHED_SCAN packet.
   start_sched_scan.AddAttribute(

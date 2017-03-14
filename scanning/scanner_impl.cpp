@@ -21,6 +21,7 @@
 
 #include <android-base/logging.h>
 
+#include "wificond/client_interface_impl.h"
 #include "wificond/scanning/scan_utils.h"
 
 using android::binder::Status;
@@ -39,18 +40,22 @@ using namespace std::placeholders;
 namespace android {
 namespace wificond {
 
-ScannerImpl::ScannerImpl(uint32_t interface_index,
-                         const BandInfo& band_info,
+ScannerImpl::ScannerImpl(uint32_t wiphy_index,
+                         uint32_t interface_index,
                          const ScanCapabilities& scan_capabilities,
                          const WiphyFeatures& wiphy_features,
+                         ClientInterfaceImpl* client_interface,
+                         NetlinkUtils* netlink_utils,
                          ScanUtils* scan_utils)
     : valid_(true),
       scan_started_(false),
       pno_scan_started_(false),
+      wiphy_index_(wiphy_index),
       interface_index_(interface_index),
-      band_info_(band_info),
       scan_capabilities_(scan_capabilities),
       wiphy_features_(wiphy_features),
+      client_interface_(client_interface),
+      netlink_utils_(netlink_utils),
       scan_utils_(scan_utils),
       scan_event_handler_(nullptr) {
   // Subscribe one-shot scan result notification from kernel.
@@ -87,31 +92,63 @@ bool ScannerImpl::CheckIsValid() {
   return valid_;
 }
 
-Status ScannerImpl::getAvailable2gChannels(vector<int32_t>* out_frequencies) {
+Status ScannerImpl::getAvailable2gChannels(
+    std::unique_ptr<vector<int32_t>>* out_frequencies) {
   if (!CheckIsValid()) {
     return Status::ok();
   }
-  *out_frequencies = vector<int32_t>(band_info_.band_2g.begin(),
-                                     band_info_.band_2g.end());
+  BandInfo band_info;
+  if (!netlink_utils_->GetWiphyInfo(wiphy_index_,
+                               &band_info,
+                               &scan_capabilities_,
+                               &wiphy_features_)) {
+    LOG(ERROR) << "Failed to get wiphy info from kernel";
+    out_frequencies->reset(nullptr);
+    return Status::ok();
+  }
+
+  out_frequencies->reset(new vector<int32_t>(band_info.band_2g.begin(),
+                                             band_info.band_2g.end()));
   return Status::ok();
 }
 
 Status ScannerImpl::getAvailable5gNonDFSChannels(
-    vector<int32_t>* out_frequencies) {
+    std::unique_ptr<vector<int32_t>>* out_frequencies) {
   if (!CheckIsValid()) {
     return Status::ok();
   }
-  *out_frequencies = vector<int32_t>(band_info_.band_5g.begin(),
-                                     band_info_.band_5g.end());
+  BandInfo band_info;
+  if (!netlink_utils_->GetWiphyInfo(wiphy_index_,
+                               &band_info,
+                               &scan_capabilities_,
+                               &wiphy_features_)) {
+    LOG(ERROR) << "Failed to get wiphy info from kernel";
+    out_frequencies->reset(nullptr);
+    return Status::ok();
+  }
+
+  out_frequencies->reset(new vector<int32_t>(band_info.band_5g.begin(),
+                                             band_info.band_5g.end()));
   return Status::ok();
 }
 
-Status ScannerImpl::getAvailableDFSChannels(vector<int32_t>* out_frequencies) {
+Status ScannerImpl::getAvailableDFSChannels(
+    std::unique_ptr<vector<int32_t>>* out_frequencies) {
   if (!CheckIsValid()) {
     return Status::ok();
   }
-  *out_frequencies = vector<int32_t>(band_info_.band_dfs.begin(),
-                                     band_info_.band_dfs.end());
+  BandInfo band_info;
+  if (!netlink_utils_->GetWiphyInfo(wiphy_index_,
+                               &band_info,
+                               &scan_capabilities_,
+                               &wiphy_features_)) {
+    LOG(ERROR) << "Failed to get wiphy info from kernel";
+    out_frequencies->reset(nullptr);
+    return Status::ok();
+  }
+
+  out_frequencies->reset(new vector<int32_t>(band_info.band_dfs.begin(),
+                                             band_info.band_dfs.end()));
   return Status::ok();
 }
 
@@ -128,13 +165,16 @@ Status ScannerImpl::getScanResults(vector<NativeScanResult>* out_scan_results) {
 Status ScannerImpl::scan(const SingleScanSettings& scan_settings,
                          bool* out_success) {
   if (!CheckIsValid()) {
+    *out_success = false;
     return Status::ok();
   }
 
   if (scan_started_) {
     LOG(WARNING) << "Scan already started";
   }
-  bool random_mac =  wiphy_features_.supports_random_mac_oneshot_scan;
+  // Only request MAC address randomization when station is not associated.
+  bool request_random_mac =  wiphy_features_.supports_random_mac_oneshot_scan &&
+      !client_interface_->IsAssociated();
 
   // Initialize it with an empty ssid for a wild card scan.
   vector<vector<uint8_t>> ssids = {{}};
@@ -152,7 +192,7 @@ Status ScannerImpl::scan(const SingleScanSettings& scan_settings,
     freqs.push_back(channel.frequency_);
   }
 
-  if (!scan_utils_->Scan(interface_index_, random_mac, ssids, freqs)) {
+  if (!scan_utils_->Scan(interface_index_, request_random_mac, ssids, freqs)) {
     *out_success = false;
     return Status::ok();
   }
@@ -164,6 +204,7 @@ Status ScannerImpl::scan(const SingleScanSettings& scan_settings,
 Status ScannerImpl::startPnoScan(const PnoSettings& pno_settings,
                                  bool* out_success) {
   if (!CheckIsValid()) {
+    *out_success = false;
     return Status::ok();
   }
   if (pno_scan_started_) {
@@ -194,20 +235,23 @@ Status ScannerImpl::startPnoScan(const PnoSettings& pno_settings,
     match_ssids.push_back(network.ssid_);
   }
 
-  bool random_mac = wiphy_features_.supports_random_mac_sched_scan;
+  // Only request MAC address randomization when station is not associated.
+  bool request_random_mac = wiphy_features_.supports_random_mac_sched_scan &&
+      !client_interface_->IsAssociated();
 
   if (!scan_utils_->StartScheduledScan(interface_index_,
                                        pno_settings.interval_ms_,
                                        // TODO: honor both rssi thresholds.
-                                       pno_settings.min_2g_rssi_,
-                                       random_mac,
+                                       pno_settings.min_5g_rssi_,
+                                       request_random_mac,
                                        scan_ssids,
                                        match_ssids,
                                        freqs)) {
     *out_success = false;
-    LOG(ERROR) << "Failed to start scheduled scan";
+    LOG(ERROR) << "Failed to start pno scan";
     return Status::ok();
   }
+  LOG(INFO) << "Pno scan started";
   pno_scan_started_ = true;
   *out_success = true;
   return Status::ok();
@@ -215,6 +259,7 @@ Status ScannerImpl::startPnoScan(const PnoSettings& pno_settings,
 
 Status ScannerImpl::stopPnoScan(bool* out_success) {
   if (!CheckIsValid()) {
+    *out_success = false;
     return Status::ok();
   }
 

@@ -38,6 +38,7 @@ class MlmeConnectEvent {
   // Status codes definition: IEEE 802.11-2012, 8.4.1.9, Table 8-37
   uint16_t GetStatusCode() const { return status_code_; }
   uint32_t GetInterfaceIndex() const { return interface_index_; }
+  bool IsTimeout() const { return is_timeout_; }
 
  private:
   MlmeConnectEvent() = default;
@@ -45,6 +46,7 @@ class MlmeConnectEvent {
   uint32_t interface_index_;
   std::vector<uint8_t> bssid_;
   uint16_t status_code_;
+  bool is_timeout_;
 
   DISALLOW_COPY_AND_ASSIGN(MlmeConnectEvent);
 };
@@ -60,6 +62,7 @@ class MlmeAssociateEvent {
   // Status codes definition: IEEE 802.11-2012, 8.4.1.9, Table 8-37
   uint16_t GetStatusCode() const { return status_code_; }
   uint32_t GetInterfaceIndex() const { return interface_index_; }
+  bool IsTimeout() const { return is_timeout_; }
 
  private:
   MlmeAssociateEvent() = default;
@@ -67,6 +70,7 @@ class MlmeAssociateEvent {
   uint32_t interface_index_;
   std::vector<uint8_t> bssid_;
   uint16_t status_code_;
+  bool is_timeout_;
 
   DISALLOW_COPY_AND_ASSIGN(MlmeAssociateEvent);
 };
@@ -91,6 +95,35 @@ class MlmeRoamEvent {
   uint16_t status_code_;
 
   DISALLOW_COPY_AND_ASSIGN(MlmeRoamEvent);
+};
+
+
+class MlmeDisconnectEvent {
+ public:
+  static std::unique_ptr<MlmeDisconnectEvent> InitFromPacket(
+      const NL80211Packet* packet);
+  uint32_t GetInterfaceIndex() const { return interface_index_; }
+ private:
+  MlmeDisconnectEvent() = default;
+
+  uint32_t interface_index_;
+  std::vector<uint8_t> bssid_;
+
+  DISALLOW_COPY_AND_ASSIGN(MlmeDisconnectEvent);
+};
+
+class MlmeDisassociateEvent {
+ public:
+  static std::unique_ptr<MlmeDisassociateEvent> InitFromPacket(
+      const NL80211Packet* packet);
+  uint32_t GetInterfaceIndex() const { return interface_index_; }
+ private:
+  MlmeDisassociateEvent() = default;
+
+  uint32_t interface_index_;
+  std::vector<uint8_t> bssid_;
+
+  DISALLOW_COPY_AND_ASSIGN(MlmeDisassociateEvent);
 };
 
 }  // namespace wificond
