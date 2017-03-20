@@ -29,6 +29,22 @@
 namespace android {
 namespace wificond {
 
+struct InterfaceInfo {
+  InterfaceInfo() = default;
+  InterfaceInfo(uint32_t index_,
+                const std::string name_,
+                const std::vector<uint8_t> mac_address_)
+      : index(index_),
+        name(name_),
+        mac_address(mac_address_) {}
+  // Index of this interface.
+  uint32_t index;
+  // Name of this interface.
+  std::string name;
+  // MAC address of this interface.
+  std::vector<uint8_t> mac_address;
+};
+
 struct BandInfo {
   BandInfo() = default;
   BandInfo(std::vector<uint32_t>& band_2g_,
@@ -123,13 +139,13 @@ class NetlinkUtils {
   // Returns true on success.
   virtual bool GetWiphyIndex(uint32_t* out_wiphy_index);
 
-  // Get wifi interface info from kernel.
+  // Get wifi interfaces info from kernel.
   // |wiphy_index| is the wiphy index we get using GetWiphyIndex().
+  // |interface_info| returns a vector of InterfaceInfo structs with
+  // information about all existing interfaces.
   // Returns true on success.
-  virtual bool GetInterfaceInfo(uint32_t wiphy_index,
-                                std::string* name,
-                                uint32_t* index,
-                                std::vector<uint8_t>* mac_addr);
+  virtual bool GetInterfaces(uint32_t wiphy_index,
+                             std::vector<InterfaceInfo>* interface_info);
 
   // Set the mode of interface.
   // |interface_index| is the interface index.
@@ -176,6 +192,16 @@ class NetlinkUtils {
   // Cancel the sign-up of receiving regulatory domain change notification
   // from wiphy with index |wiphy_index|.
   virtual void UnsubscribeRegDomainChange(uint32_t wiphy_index);
+
+  // Sign up to be notified when there is an station event.
+  // Only one handler can be registered per interface index.
+  // New handler will replace the registered handler if they are for the
+  // same interface index.
+  virtual void SubscribeStationEvent(uint32_t interface_index,
+                                     OnStationEventHandler handler);
+
+  // Cancel the sign-up of receiving station events.
+  virtual void UnsubscribeStationEvent(uint32_t interface_index);
 
  private:
   bool ParseBandInfo(const NL80211Packet* const packet,

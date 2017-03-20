@@ -178,14 +178,17 @@ Status ScannerImpl::scan(const SingleScanSettings& scan_settings,
 
   // Initialize it with an empty ssid for a wild card scan.
   vector<vector<uint8_t>> ssids = {{}};
+
+  vector<vector<uint8_t>> skipped_scan_ssids;
   for (auto& network : scan_settings.hidden_networks_) {
     if (ssids.size() + 1 > scan_capabilities_.max_num_scan_ssids) {
-      LOG(WARNING) << "Skip scan ssid for single scan: "
-                   << string(network.ssid_.begin(), network.ssid_.end());
+      skipped_scan_ssids.emplace_back(network.ssid_);
       continue;
     }
     ssids.push_back(network.ssid_);
   }
+
+  LogSsidList(skipped_scan_ssids, "Skip scan ssid for single scan");
 
   vector<uint32_t> freqs;
   for (auto& channel : scan_settings.channel_settings_) {
@@ -216,24 +219,27 @@ Status ScannerImpl::startPnoScan(const PnoSettings& pno_settings,
   // Empty frequency list: scan all frequencies.
   vector<uint32_t> freqs;
 
+  vector<vector<uint8_t>> skipped_scan_ssids;
+  vector<vector<uint8_t>> skipped_match_ssids;
   for (auto& network : pno_settings.pno_networks_) {
     // Add hidden network ssid.
     if (network.is_hidden_) {
       if (scan_ssids.size() + 1 > scan_capabilities_.max_num_sched_scan_ssids) {
-        LOG(WARNING) << "Skip scan ssid for pno scan: "
-                     << string(network.ssid_.begin(), network.ssid_.end());
+        skipped_scan_ssids.emplace_back(network.ssid_);
         continue;
       }
       scan_ssids.push_back(network.ssid_);
     }
 
     if (match_ssids.size() + 1 > scan_capabilities_.max_match_sets) {
-      LOG(WARNING) << "Skip match ssid for pno scan: "
-                   << string(network.ssid_.begin(), network.ssid_.end());
+      skipped_match_ssids.emplace_back(network.ssid_);
       continue;
     }
     match_ssids.push_back(network.ssid_);
   }
+
+  LogSsidList(skipped_scan_ssids, "Skip scan ssid for pno scan");
+  LogSsidList(skipped_match_ssids, "Skip match ssid for pno scan");
 
   // Only request MAC address randomization when station is not associated.
   bool request_random_mac = wiphy_features_.supports_random_mac_sched_scan &&
@@ -270,6 +276,7 @@ Status ScannerImpl::stopPnoScan(bool* out_success) {
     *out_success = false;
     return Status::ok();
   }
+  LOG(INFO) << "Pno scan stopped";
   pno_scan_started_ = false;
   *out_success = true;
   return Status::ok();
@@ -324,7 +331,9 @@ void ScannerImpl::OnScanResultsReady(
     // TODO: Pass other parameters back once we find framework needs them.
     if (aborted) {
       LOG(WARNING) << "Scan aborted";
-      scan_event_handler_->OnScanFailed();
+      // TODO(b/36231150): Only plumb through scan aborted event when
+      // we make sure WificondScanner.java won't cause a tight loop.
+      // scan_event_handler_->OnScanFailed();
     } else {
       scan_event_handler_->OnScanResultReady();
     }
@@ -337,6 +346,7 @@ void ScannerImpl::OnSchedScanResultsReady(uint32_t interface_index,
                                           bool scan_stopped) {
   if (pno_scan_event_handler_ != nullptr) {
     if (scan_stopped) {
+      LOG(INFO) << "Pno scan stopped event";
       // If |pno_scan_started_| is false.
       // This stop notification might result from our own request.
       // See the document for NL80211_CMD_SCHED_SCAN_STOPPED in nl80211.h.
@@ -345,9 +355,25 @@ void ScannerImpl::OnSchedScanResultsReady(uint32_t interface_index,
       }
       pno_scan_started_ = false;
     } else {
+      LOG(INFO) << "Pno scan result ready event";
       pno_scan_event_handler_->OnPnoNetworkFound();
     }
   }
+}
+
+void ScannerImpl::LogSsidList(vector<vector<uint8_t>>& ssid_list,
+                              string prefix) {
+  if (ssid_list.empty()) {
+    return;
+  }
+  string ssid_list_string;
+  for (auto& ssid : ssid_list) {
+    ssid_list_string += string(ssid.begin(), ssid.end());
+    if (&ssid != &ssid_list.back()) {
+      ssid_list_string += ", ";
+    }
+  }
+  LOG(WARNING) << prefix << ": " << ssid_list_string;
 }
 
 }  // namespace wificond

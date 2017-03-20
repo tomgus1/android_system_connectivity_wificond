@@ -32,6 +32,7 @@ class MockNetlinkUtils : public NetlinkUtils {
   MOCK_METHOD1(GetWiphyIndex, bool(uint32_t* out_wiphy_index));
   MOCK_METHOD1(UnsubscribeMlmeEvent, void(uint32_t interface_index));
   MOCK_METHOD1(UnsubscribeRegDomainChange, void(uint32_t wiphy_index));
+  MOCK_METHOD1(UnsubscribeStationEvent, void(uint32_t interface_index));
   MOCK_METHOD2(SetInterfaceMode,
                bool(uint32_t interface_index, InterfaceMode mode));
   MOCK_METHOD2(SubscribeMlmeEvent,
@@ -40,12 +41,13 @@ class MockNetlinkUtils : public NetlinkUtils {
   MOCK_METHOD2(SubscribeRegDomainChange,
                void(uint32_t wiphy_index,
                     OnRegDomainChangedHandler handler));
+  MOCK_METHOD2(SubscribeStationEvent,
+               void(uint32_t interface_index,
+                    OnStationEventHandler handler));
 
-  MOCK_METHOD4(GetInterfaceInfo,
+  MOCK_METHOD2(GetInterfaces,
                bool(uint32_t wiphy_index,
-                    std::string* name,
-                    uint32_t* index,
-                    std::vector<uint8_t>* mac_address));
+                    std::vector<InterfaceInfo>* interfaces));
   MOCK_METHOD4(GetWiphyInfo,
                bool(uint32_t wiphy_index,
                     BandInfo* band_info,
