@@ -325,15 +325,17 @@ void ScannerImpl::OnScanResultsReady(
     bool aborted,
     vector<vector<uint8_t>>& ssids,
     vector<uint32_t>& frequencies) {
-  LOG(INFO) << "Received scan result notification from kernel.";
+  if (scan_started_) {
+    LOG(INFO) << "Received scan result notification from kernel.";
+  } else {
+    LOG(INFO) << "Received external scan result notification from kernel.";
+  }
   scan_started_ = false;
   if (scan_event_handler_ != nullptr) {
     // TODO: Pass other parameters back once we find framework needs them.
     if (aborted) {
       LOG(WARNING) << "Scan aborted";
-      // TODO(b/36231150): Only plumb through scan aborted event when
-      // we make sure WificondScanner.java won't cause a tight loop.
-      // scan_event_handler_->OnScanFailed();
+      scan_event_handler_->OnScanFailed();
     } else {
       scan_event_handler_->OnScanResultReady();
     }
