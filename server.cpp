@@ -18,11 +18,16 @@
 
 #include <sstream>
 
+#include <android-base/file.h>
 #include <android-base/logging.h>
+#include <binder/IPCThreadState.h>
+#include <binder/PermissionCache.h>
 
+#include "wificond/logging_utils.h"
 #include "wificond/net/netlink_utils.h"
 #include "wificond/scanning/scan_utils.h"
 
+using android::base::WriteStringToFd;
 using android::binder::Status;
 using android::sp;
 using android::IBinder;
@@ -35,6 +40,7 @@ using android::wifi_system::HostapdManager;
 using android::wifi_system::InterfaceTool;
 using android::wifi_system::SupplicantManager;
 
+using std::endl;
 using std::placeholders::_1;
 using std::string;
 using std::stringstream;
@@ -43,6 +49,12 @@ using std::vector;
 
 namespace android {
 namespace wificond {
+
+namespace {
+
+constexpr const char* kPermissionDump = "android.permission.DUMP";
+
+}  // namespace
 
 Server::Server(unique_ptr<InterfaceTool> if_tool,
                unique_ptr<SupplicantManager> supplicant_manager,
@@ -177,6 +189,32 @@ Status Server::GetApInterfaces(vector<sp<IBinder>>* out_ap_interfaces) {
   return binder::Status::ok();
 }
 
+status_t Server::dump(int fd, const Vector<String16>& /*args*/) {
+  if (!PermissionCache::checkCallingPermission(String16(kPermissionDump))) {
+    IPCThreadState* ipc = android::IPCThreadState::self();
+    LOG(ERROR) << "Caller (uid: " << ipc->getCallingUid()
+               << ") is not permitted to dump wificond state";
+    return PERMISSION_DENIED;
+  }
+
+  stringstream ss;
+  ss << "Current wiphy index: " << wiphy_index_ << endl;
+  ss << "Cached interfaces list from kernel message: " << endl;
+  for (const auto& iface : interfaces_) {
+    ss << "Interface index: " << iface.index
+       << ", name: " << iface.name
+       << ", mac address: "
+       << LoggingUtils::GetMacString(iface.mac_address) << endl;
+  }
+
+  if (!WriteStringToFd(ss.str(), fd)) {
+    PLOG(ERROR) << "Failed to dump state to fd " << fd;
+    return FAILED_TRANSACTION;
+  }
+
+  return OK;
+}
+
 void Server::MarkDownAllInterfaces() {
   uint32_t wiphy_index;
   vector<InterfaceInfo> interfaces;
@@ -212,13 +250,13 @@ bool Server::SetupInterface(InterfaceInfo* interface) {
           this,
           _1));
 
-  vector<InterfaceInfo> interfaces;
-  if (!netlink_utils_->GetInterfaces(wiphy_index_, &interfaces)) {
+  interfaces_.clear();
+  if (!netlink_utils_->GetInterfaces(wiphy_index_, &interfaces_)) {
     LOG(ERROR) << "Failed to get interfaces info from kernel";
     return false;
   }
 
-  for (InterfaceInfo& iface : interfaces) {
+  for (const auto& iface : interfaces_) {
     // Some kernel/driver uses station type for p2p interface.
     // In that case we can only rely on hard-coded name to exclude
     // p2p interface from station interfaces.
