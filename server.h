@@ -88,6 +88,10 @@ class Server : public android::net::wifi::BnWificond {
   // killing userspace daemons and cleaning up the interface state.
   void CleanUpSystemState();
 
+  android::binder::Status setHostapdParam(
+      const std::vector<uint8_t>& cmd,
+      bool* out_success) override;
+
  private:
   // Request interface information from kernel and setup local interface object.
   // This assumes that interface should be in STATION mode. Even if we setup
