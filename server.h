@@ -79,6 +79,8 @@ class Server : public android::net::wifi::BnWificond {
   // in wificond and tries to restore ourselves to a blank state by
   // killing userspace daemons and cleaning up the interface state.
   void CleanUpSystemState();
+  void BroadcastSoftApClientConnectStatus(
+      const std::vector<uint8_t>& mac_addr, bool connect_status);
 
   android::binder::Status setHostapdParam(
       const std::vector<uint8_t>& cmd,

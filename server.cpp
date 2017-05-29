@@ -17,6 +17,8 @@
 #include "wificond/server.h"
 
 #include <sstream>
+#include <iomanip>
+#include <string.h>
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
@@ -109,7 +111,8 @@ Status Server::createApInterface(sp<IApInterface>* created_interface) {
       interface.index,
       netlink_utils_,
       if_tool_.get(),
-      hostapd_manager_.get()));
+      hostapd_manager_.get(),
+      this));
   *created_interface = ap_interface->GetBinder();
   ap_interfaces_.push_back(std::move(ap_interface));
   BroadcastApInterfaceReady(ap_interfaces_.back()->GetBinder());
@@ -435,6 +438,12 @@ void Server::BroadcastApInterfaceTornDown(
     it->OnApTorndownEvent(network_interface);
   }
 }
+void Server::BroadcastSoftApClientConnectStatus(const vector<uint8_t>& mac_address, bool connect_status) {
+  for (auto& it : interface_event_callbacks_) {
+    it->OnSoftApClientEvent(mac_address, connect_status);
+  }
+}
+
 
 }  // namespace wificond
 }  // namespace android

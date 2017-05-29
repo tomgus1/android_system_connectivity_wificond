@@ -35,6 +35,7 @@ namespace wificond {
 
 class ApInterfaceBinder;
 class NetlinkUtils;
+class Server;
 
 // Holds the guts of how we control network interfaces capable of exposing an AP
 // via hostapd.  Because remote processes may hold on to the corresponding
@@ -46,7 +47,8 @@ class ApInterfaceImpl {
                   uint32_t interface_index,
                   NetlinkUtils* netlink_utils,
                   wifi_system::InterfaceTool* if_tool,
-                  wifi_system::HostapdManager* hostapd_manager);
+                  wifi_system::HostapdManager* hostapd_manager,
+                  Server* server);
   ~ApInterfaceImpl();
 
   // Get a pointer to the binder representing this ApInterfaceImpl.
@@ -76,6 +78,7 @@ class ApInterfaceImpl {
   NetlinkUtils* const netlink_utils_;
   wifi_system::InterfaceTool* const if_tool_;
   wifi_system::HostapdManager* const hostapd_manager_;
+  Server* const server_;
   const android::sp<ApInterfaceBinder> binder_;
 
   // Number of associated stations.
