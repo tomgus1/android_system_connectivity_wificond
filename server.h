@@ -88,7 +88,7 @@ class Server : public android::net::wifi::BnWificond {
   // interface on behalf of createApInterace(), it is Hostapd that configure
   // the interface to Ap mode later.
   // Returns true on success, false otherwise.
-  bool SetupInterface(InterfaceInfo* interface);
+  bool SetupInterface(InterfaceInfo* interface, NetlinkUtils::InterfaceMode mode);
   bool RefreshWiphyIndex();
   void LogSupportedBands();
   void OnRegDomainChanged(std::string& country_code);
@@ -117,6 +117,7 @@ class Server : public android::net::wifi::BnWificond {
 
   // Cached interface list from kernel.
   std::vector<InterfaceInfo> interfaces_;
+  bool new_sap_interface;
 
   DISALLOW_COPY_AND_ASSIGN(Server);
 };

@@ -68,6 +68,7 @@ Server::Server(unique_ptr<InterfaceTool> if_tool,
       hostapd_manager_(std::move(hostapd_manager)),
       netlink_utils_(netlink_utils),
       scan_utils_(scan_utils) {
+  new_sap_interface = false;
 }
 
 Status Server::RegisterCallback(const sp<IInterfaceEventCallback>& callback) {
@@ -99,7 +100,7 @@ Status Server::UnregisterCallback(const sp<IInterfaceEventCallback>& callback) {
 
 Status Server::createApInterface(sp<IApInterface>* created_interface) {
   InterfaceInfo interface;
-  if (!SetupInterface(&interface)) {
+  if (!SetupInterface(&interface, NetlinkUtils::AP_MODE)) {
     return Status::ok();  // Logging was done internally
   }
 
@@ -118,7 +119,7 @@ Status Server::createApInterface(sp<IApInterface>* created_interface) {
 
 Status Server::createClientInterface(sp<IClientInterface>* created_interface) {
   InterfaceInfo interface;
-  if (!SetupInterface(&interface)) {
+  if (!SetupInterface(&interface, NetlinkUtils::STATION_MODE)) {
     return Status::ok();  // Logging was done internally
   }
 
@@ -207,10 +208,11 @@ Status Server::setHostapdParam(
       *out_success = qsap_hostd_exec(argc, argv) ? false : true;
     } else if (!strcmp(argv[1], "create") &&
                qsap_add_or_remove_interface(argv[2], 1)) {
-      *out_success = true;
-    } else if (!strcmp(argv[1], "remove") &&
+      *out_success = new_sap_interface = true;
+    } else if (!strcmp(argv[1], "remove") && new_sap_interface &&
                qsap_add_or_remove_interface(argv[2], 0)) {
       *out_success = true;
+      new_sap_interface = false;
     }
   } else if (argc > 1) {
     if(!strcmp(argv[1], "startap") &&
@@ -289,8 +291,8 @@ void Server::CleanUpSystemState() {
   MarkDownAllInterfaces();
 }
 
-bool Server::SetupInterface(InterfaceInfo* interface) {
-  if (!ap_interfaces_.empty() || !client_interfaces_.empty()) {
+bool Server::SetupInterface(InterfaceInfo* interface, NetlinkUtils::InterfaceMode mode) {
+  if (!new_sap_interface && (!ap_interfaces_.empty() || !client_interfaces_.empty())) {
     // In the future we may support multiple interfaces at once.  However,
     // today, we support just one.
     LOG(ERROR) << "Cannot create AP interface when other interfaces exist";
@@ -314,13 +316,26 @@ bool Server::SetupInterface(InterfaceInfo* interface) {
   }
 
   for (const auto& iface : interfaces_) {
+    // Set interface to softap* only when requested mode is AP_MODE
+    // Note that this has no impact on interface creation and on cleanup
+    // interface mode should be set to STATION_MODE. Change to AP_MODE
+    // is internal to hostapd and we don't need to bother at this point.
+    if (new_sap_interface && mode == NetlinkUtils::AP_MODE &&
+        android::base::StartsWith(iface.name, "softap")) {
+      *interface = iface;
+      return true;
+    }
+
     // Some kernel/driver uses station type for p2p interface.
     // In that case we can only rely on hard-coded name to exclude
     // p2p interface from station interfaces.
     // Currently NAN interfaces also use station type.
     // We should blacklist NAN interfaces as well.
+    // Also we would not prefer to use softap* interfaces for Station
+    // mode.
     if (iface.name != "p2p0" &&
-        !android::base::StartsWith(iface.name, "aware_data")) {
+        !android::base::StartsWith(iface.name, "aware_data") &&
+        !android::base::StartsWith(iface.name, "softap")) {
       *interface = iface;
       return true;
     }
