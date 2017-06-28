@@ -100,16 +100,6 @@ bool ApInterfaceImpl::StopHostapd() {
     return false;
   }
 
-  // Since wificond SIGKILLs hostapd, hostapd has no chance to handle
-  // the cleanup.
-  // Besides taking down the interface, we also need to set the interface mode
-  // back to station mode for the cleanup.
-  if (!netlink_utils_->SetInterfaceMode(interface_index_,
-                                        NetlinkUtils::STATION_MODE)) {
-    LOG(ERROR) << "Failed to set interface back to station mode";
-    return false;
-  }
-
   return true;
 }
 
