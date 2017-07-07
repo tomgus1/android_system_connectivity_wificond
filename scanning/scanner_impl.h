@@ -63,6 +63,9 @@ class ScannerImpl : public android::net::wifi::BnWifiScannerImpl {
   ::android::binder::Status getPnoScanResults(
       std::vector<com::android::server::wifi::wificond::NativeScanResult>*
           out_scan_results) override;
+  ::android::binder::Status getWifiGbkHistory(
+      const std::vector<uint8_t>& ssid,
+      std::unique_ptr<::std::vector<uint8_t>>* out_ssid) override;
   ::android::binder::Status scan(
       const ::com::android::server::wifi::wificond::SingleScanSettings&
           scan_settings,

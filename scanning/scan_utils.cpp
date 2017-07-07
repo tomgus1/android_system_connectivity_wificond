@@ -26,6 +26,9 @@
 #include "wificond/net/netlink_manager.h"
 #include "wificond/net/nl80211_packet.h"
 #include "wificond/scanning/scan_result.h"
+#ifdef CONFIG_WIFI_GBK
+#include "wificond/scanning/wifi_gbk2utf.h"
+#endif
 
 using com::android::server::wifi::wificond::NativeScanResult;
 using std::unique_ptr;
@@ -45,9 +48,19 @@ ScanUtils::ScanUtils(NetlinkManager* netlink_manager)
   if (!netlink_manager_->IsStarted()) {
     netlink_manager_->Start();
   }
+#ifdef CONFIG_WIFI_GBK
+  LOG(INFO) << "wifigbk_init...";
+  wifigbk_init();
+#endif
+
 }
 
-ScanUtils::~ScanUtils() {}
+ScanUtils::~ScanUtils() {
+#ifdef CONFIG_WIFI_GBK
+   LOG(INFO) << "wifigbk_deinit...";
+   wifigbk_deinit();
+#endif
+}
 
 void ScanUtils::SubscribeScanResultNotification(
     uint32_t interface_index,
@@ -152,6 +165,28 @@ bool ScanUtils::ParseScanResult(unique_ptr<const NL80211Packet> packet,
       // These scan results are considered as malformed.
       return false;
     }
+#ifdef CONFIG_WIFI_GBK
+    {
+        if (wifigbk_isGbk(ssid)) {
+            vector<uint8_t> utf_ssid;
+
+            int ret = wifigbk_toUtf(ssid, &utf_ssid);
+            if (ret) {
+                LOG(ERROR) << "Failed to convert GBK ssid, skipping";
+            } else {
+                bool success;
+
+                // replace ssid vector & ssid in ie vector
+                success = ReplaceSSIDFromInfoElement(ie, utf_ssid);
+                if (success) {
+                    ssid = utf_ssid;
+                } else {
+                    LOG(ERROR) << "Failed to replace GBK ssid in IE, skipping";
+                }
+            }
+        }
+    }
+#endif
     uint64_t last_seen_since_boot_microseconds;
     if (!GetBssTimestamp(bss, &last_seen_since_boot_microseconds)) {
       // Logging is done inside |GetBssTimestamp|.
@@ -210,6 +245,57 @@ bool ScanUtils::GetBssTimestamp(const NL80211NestedAttr& bss,
   }
   return true;
 }
+
+#ifdef CONFIG_WIFI_GBK
+bool ScanUtils::ReplaceSSIDFromInfoElement(vector<uint8_t>& ie,
+                                           const vector<uint8_t>& ssid) {
+  const uint8_t* end = ie.data() + ie.size();
+  const uint8_t* ptr = ie.data();
+  // +1 means we must have space for the length field.
+  while (ptr + 1  < end) {
+    uint8_t type = *ptr;
+    uint8_t length = *(ptr + 1);
+    // Length field is invalid.
+    if (ptr + 1 + length >= end) {
+      return false;
+    }
+    // SSID element is found.
+    if (type == kElemIdSsid) {
+      // SSID is not an empty string.
+      if (length > 0) {
+        int pos = ptr - ie.data();
+        vector<uint8_t>::iterator vitr = ie.begin();
+
+        ie[pos + 1] = ssid.size();
+        ie.erase(vitr + (pos + 2), vitr + (pos + 2 + length));
+        ie.insert(vitr + (pos + 2), ssid.begin(), ssid.end());
+      }
+      return true;
+    }
+    ptr += 2 + length;
+  }
+  return false;
+}
+
+bool ScanUtils::getWifiGbkHistory(uint32_t interface_index,
+                           const vector<uint8_t>& ssid,
+                           vector<uint8_t>* out_ssid) {
+  vector<uint8_t> tmp_ssid;
+  int ret;
+
+  ret = wifigbk_getFromHistory(ssid, tmp_ssid);
+  if (ret == 0){
+      *out_ssid = tmp_ssid;
+      return true;
+  } else if (ret == -1) {
+      /* not found */
+      return true;
+  }
+
+  return false;
+}
+#endif
+
 
 bool ScanUtils::GetSSIDFromInfoElement(const vector<uint8_t>& ie,
                                        vector<uint8_t>* ssid) {

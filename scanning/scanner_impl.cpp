@@ -183,6 +183,24 @@ Status ScannerImpl::getPnoScanResults(
   }
   return Status::ok();
 }
+Status ScannerImpl::getWifiGbkHistory(
+    const vector<uint8_t>& ssid,
+    std::unique_ptr<::std::vector<uint8_t>>* out_ssid) {
+#ifdef CONFIG_WIFI_GBK
+  if (!CheckIsValid()) {
+    return Status::ok();
+  }
+  vector<uint8_t> tmp_ssid;
+  if (!scan_utils_->getWifiGbkHistory(interface_index_, ssid, &tmp_ssid)) {
+    out_ssid->reset(nullptr);
+    LOG(ERROR) << "Failed to get ssid from WifiGbkHistory";
+    return Status::ok();
+  }
+
+  out_ssid->reset(new vector<uint8_t>(tmp_ssid));
+#endif
+  return Status::ok();
+}
 
 Status ScannerImpl::scan(const SingleScanSettings& scan_settings,
                          bool* out_success) {

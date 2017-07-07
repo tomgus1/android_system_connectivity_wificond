@@ -41,6 +41,8 @@ interface IWifiScannerImpl {
   // Get the latest pno scan results from the interface which has most recently
   // completed disconnected mode PNO scans
   NativeScanResult[] getPnoScanResults();
+  // Get GBK conversion history from wifigbk.
+  @nullable byte[] getWifiGbkHistory(in byte[] ssid);
 
   // Request a single scan using a SingleScanSettings parcelable object.
   boolean scan(in SingleScanSettings scanSettings);

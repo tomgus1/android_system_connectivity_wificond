@@ -13,7 +13,7 @@
 # limitations under the License.
 
 LOCAL_PATH := $(call my-dir)
-wificond_cpp_flags := -Wall -Werror -Wno-unused-parameter
+wificond_cpp_flags := -Wall -Werror -Wno-unused-parameter -DCONFIG_WIFI_GBK
 wificond_parent_dir := $(LOCAL_PATH)/../
 wificond_includes := \
     $(wificond_parent_dir)
@@ -41,10 +41,13 @@ LOCAL_SHARED_LIBRARIES := \
     libhidltransport \
     libminijail \
     libutils \
+    liblog \
+    libicuuc \
     libwifi-system \
     libwifi-system-iface\
     libqsap_sdk
 LOCAL_STATIC_LIBRARIES := \
+    libicuandroid_utils \
     libwificond
 include $(BUILD_EXECUTABLE)
 
@@ -75,6 +78,7 @@ LOCAL_SRC_FILES := \
     scanning/offload/scan_stats.cpp \
     scanning/single_scan_settings.cpp \
     scanning/scan_utils.cpp \
+    scanning/wifi_gbk2utf.cpp \
     scanning/scanner_impl.cpp \
     scanning/offload/offload_scan_manager.cpp \
     scanning/offload/offload_callback.cpp \
@@ -90,6 +94,7 @@ LOCAL_SHARED_LIBRARIES := \
     libhidltransport \
     libwifi-system \
     libwifi-system-iface \
+    libicuuc \
     libwifi-system \
     libnl \
     libqsap_sdk
@@ -234,6 +239,7 @@ LOCAL_SHARED_LIBRARIES := \
     libhwbinder \
     liblog \
     libutils \
+    libicuuc \
     libwifi-system \
     libwifi-system-iface\
     libqsap_sdk
