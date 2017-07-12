@@ -66,6 +66,8 @@ class Server : public android::net::wifi::BnWificond {
           created_interface) override;
 
   android::binder::Status tearDownInterfaces() override;
+  android::binder::Status tearDownApInterfaces() override;
+  android::binder::Status tearDownStaInterfaces() override;
 
   android::binder::Status GetClientInterfaces(
       std::vector<android::sp<android::IBinder>>* out_client_ifs) override;

@@ -157,6 +157,24 @@ Status Server::tearDownInterfaces() {
   return Status::ok();
 }
 
+Status Server::tearDownStaInterfaces() {
+  for (auto& it : client_interfaces_) {
+    BroadcastClientInterfaceTornDown(it->GetBinder());
+  }
+  client_interfaces_.clear();
+
+  return Status::ok();
+}
+
+Status Server::tearDownApInterfaces() {
+  for (auto& it : ap_interfaces_) {
+    BroadcastApInterfaceTornDown(it->GetBinder());
+  }
+  ap_interfaces_.clear();
+
+  return Status::ok();
+}
+
 Status Server::GetClientInterfaces(vector<sp<IBinder>>* out_client_interfaces) {
   vector<sp<android::IBinder>> client_interfaces_binder;
   for (auto& it : client_interfaces_) {
