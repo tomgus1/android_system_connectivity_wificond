@@ -140,6 +140,24 @@ LOCAL_SHARED_LIBRARIES := \
 include $(BUILD_STATIC_LIBRARY)
 
 ###
+### wificond IPC interface shared library
+###
+include $(CLEAR_VARS)
+LOCAL_MODULE := libwificond_ipc
+LOCAL_C_INCLUDES := $(wificond_includes)
+LOCAL_CPPFLAGS := $(wificond_cpp_flags)
+LOCAL_SRC_FILES := \
+    logging_utils.cpp
+LOCAL_SHARED_LIBRARIES := \
+    libbase \
+    libbinder \
+    libutils \
+    libcutils
+LOCAL_WHOLE_STATIC_LIBRARIES := \
+    libwificond_ipc
+include $(BUILD_SHARED_LIBRARY)
+
+###
 ### test util library
 ###
 include $(CLEAR_VARS)
