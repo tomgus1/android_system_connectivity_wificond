@@ -22,6 +22,9 @@
 
 #include "wificond/ap_interface_binder.h"
 #include "wificond/logging_utils.h"
+#include <sstream>
+#include <iomanip>
+#include "qsap_api.h"
 
 using android::net::wifi::IApInterface;
 using android::wifi_system::HostapdManager;
@@ -123,6 +126,59 @@ bool ApInterfaceImpl::WriteHostapdConfig(const vector<uint8_t>& ssid,
   }
 
   return hostapd_manager_->WriteHostapdConfig(config);
+}
+
+bool ApInterfaceImpl::QcWriteHostapdConfig(const vector<uint8_t>& ssid,
+                                           bool is_hidden,
+                                           int32_t channel,
+                                           EncryptionType encryption_type,
+                                           const vector<uint8_t>& passphrase) {
+  int argc = 0;
+  char *data[10];
+  char **argv = data;
+  std::stringstream ss;
+
+  for (uint8_t b : ssid) {
+    ss << b;
+  }
+  // ASCII ssid string.
+  const string ssid_as_string  = ss.str();
+
+  ss.str(string());  // clear ss buffer.
+  for (uint8_t b : passphrase) {
+    ss << b;
+  }
+  // ASCII passphrase string.
+  const string passphrase_as_string  = ss.str();
+
+  /* softap setsoftap <optional dual2g/5g> <interface> <ssid/ssid2> <hidden/visible> <channel> <open/wep/wpa-psk/wpa2-psk> <wpa_passphrase> <max_num_sta> */
+  data[argc++] = strdup("softap");
+  data[argc++] = strdup("setsoftap");
+  data[argc++] = strdup(interface_name_.c_str());
+  data[argc++] = strdup(ssid_as_string.c_str());
+  data[argc++] = is_hidden ? strdup("hidden") : strdup("visible");
+  data[argc++] = strdup(std::to_string(channel).c_str());
+
+  switch (encryption_type) {
+    case EncryptionType::kOpen:
+      data[argc++] = strdup("open");
+      break;
+    case EncryptionType::kWpa:
+      data[argc++] = strdup("wpa-psk");
+      data[argc++] = strdup(passphrase_as_string.c_str());
+      break;
+    case EncryptionType::kWpa2:
+      data[argc++] = strdup("wpa2-psk");
+      data[argc++] = strdup(passphrase_as_string.c_str());
+      break;
+  }
+  bool status = !qsapsetSoftap(argc, argv);
+
+  // done with data, free it now.
+  while (argc--)
+    free(data[argc]);
+
+  return status;
 }
 
 void ApInterfaceImpl::OnStationEvent(StationEvent event,

@@ -61,6 +61,12 @@ class ApInterfaceImpl {
   std::string GetInterfaceName() { return interface_name_; }
   int GetNumberOfAssociatedStations() const;
   void Dump(std::stringstream* ss) const;
+  bool QcWriteHostapdConfig(
+      const std::vector<uint8_t>& ssid,
+      bool is_hidden,
+      int32_t channel,
+      wifi_system::HostapdManager::EncryptionType encryption_type,
+      const std::vector<uint8_t>& passphrase);
 
  private:
   const std::string interface_name_;
