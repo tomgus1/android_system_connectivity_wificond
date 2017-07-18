@@ -24,6 +24,7 @@
 
 #include "android/net/wifi/BnWifiScannerImpl.h"
 #include "wificond/net/netlink_utils.h"
+#include "wificond/scanning/offload/offload_scan_manager.h"
 
 namespace android {
 namespace wificond {
@@ -74,6 +75,8 @@ class ScannerImpl : public android::net::wifi::BnWifiScannerImpl {
 
  private:
   bool CheckIsValid();
+  void OnOffloadScanResult(
+      std::vector<::com::android::server::wifi::wificond::NativeScanResult>);
   void OnScanResultsReady(
       uint32_t interface_index,
       bool aborted,
@@ -82,11 +85,23 @@ class ScannerImpl : public android::net::wifi::BnWifiScannerImpl {
   void OnSchedScanResultsReady(uint32_t interface_index, bool scan_stopped);
   void LogSsidList(std::vector<std::vector<uint8_t>>& ssid_list,
                    std::string prefix);
-
+  bool StartPnoScanDefault(
+      const ::com::android::server::wifi::wificond::PnoSettings& pno_settings);
+  bool StartPnoScanOffload(
+      const ::com::android::server::wifi::wificond::PnoSettings& pno_settings);
+  bool StopPnoScanDefault();
+  bool StopPnoScanOffload();
+  void ParsePnoSettings(
+    const ::com::android::server::wifi::wificond::PnoSettings& pno_settings,
+    std::vector<std::vector<uint8_t>>* scan_ssids,
+    std::vector<std::vector<uint8_t>>* match_ssids,
+    std::vector<uint32_t>* freqs,
+    std::vector<uint8_t>* match_security);
   // Boolean variables describing current scanner status.
   bool valid_;
   bool scan_started_;
   bool pno_scan_started_;
+  bool offload_scan_supported_;
 
   const uint32_t wiphy_index_;
   const uint32_t interface_index_;
@@ -100,6 +115,7 @@ class ScannerImpl : public android::net::wifi::BnWifiScannerImpl {
   ScanUtils* const scan_utils_;
   ::android::sp<::android::net::wifi::IPnoScanEvent> pno_scan_event_handler_;
   ::android::sp<::android::net::wifi::IScanEvent> scan_event_handler_;
+  std::unique_ptr<OffloadScanManager> offload_scan_manager_;
 
   DISALLOW_COPY_AND_ASSIGN(ScannerImpl);
 };
