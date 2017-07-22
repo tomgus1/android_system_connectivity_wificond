@@ -86,13 +86,13 @@ void ApInterfaceImpl::Dump(std::stringstream* ss) const {
   *ss << "------- Dump End -------" << endl;
 }
 
-bool ApInterfaceImpl::StartHostapd() {
-  return hostapd_manager_->StartHostapd();
+bool ApInterfaceImpl::StartHostapd(bool dual_mode) {
+  return hostapd_manager_->StartHostapd(dual_mode);
 }
 
-bool ApInterfaceImpl::StopHostapd() {
+bool ApInterfaceImpl::StopHostapd(bool dual_mode) {
   // Drop SIGKILL on hostapd.
-  if (!hostapd_manager_->StopHostapd()) {
+  if (!hostapd_manager_->StopHostapd(dual_mode)) {
     // Logging was done internally.
     return false;
   }

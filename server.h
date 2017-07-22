@@ -85,6 +85,10 @@ class Server : public android::net::wifi::BnWificond {
   android::binder::Status setHostapdParam(
       const std::vector<uint8_t>& cmd,
       bool* out_success) override;
+  android::binder::Status QcCreateApInterface(
+      const std::vector<uint8_t>& ifname,
+      android::sp<android::net::wifi::IApInterface>*
+          created_interface) override;
 
  private:
   // Request interface information from kernel and setup local interface object.
@@ -92,7 +96,7 @@ class Server : public android::net::wifi::BnWificond {
   // interface on behalf of createApInterace(), it is Hostapd that configure
   // the interface to Ap mode later.
   // Returns true on success, false otherwise.
-  bool SetupInterface(InterfaceInfo* interface, NetlinkUtils::InterfaceMode mode);
+  bool SetupInterface(InterfaceInfo* interface);
   bool RefreshWiphyIndex();
   void LogSupportedBands();
   void OnRegDomainChanged(std::string& country_code);
@@ -105,6 +109,7 @@ class Server : public android::net::wifi::BnWificond {
   void BroadcastApInterfaceTornDown(
       android::sp<android::net::wifi::IApInterface> network_interface);
   void MarkDownAllInterfaces();
+  bool QcSetupInterface(InterfaceInfo* interface, const char* ifname);
 
   const std::string base_ifname_;
   const std::unique_ptr<wifi_system::InterfaceTool> if_tool_;
@@ -121,7 +126,6 @@ class Server : public android::net::wifi::BnWificond {
 
   // Cached interface list from kernel.
   std::vector<InterfaceInfo> interfaces_;
-  bool new_sap_interface;
 
   DISALLOW_COPY_AND_ASSIGN(Server);
 };

@@ -70,4 +70,10 @@ interface IWificond {
     // Tear down all existing AP interfaces. This should enable clients to
     // create future AP interfaces immediately after this method returns.
     void tearDownApInterfaces();
+
+    // Create an Ap interface suitable for use as an AP based on the input
+    // interface name.
+    //
+    // @param interface name of AP as vector of bytes.
+    @nullable IApInterface QcCreateApInterface(in byte[] ifname);
 }

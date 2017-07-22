@@ -19,6 +19,7 @@
 #include <sstream>
 #include <iomanip>
 #include <string.h>
+#include <net/if.h>
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
@@ -70,7 +71,6 @@ Server::Server(unique_ptr<InterfaceTool> if_tool,
       hostapd_manager_(std::move(hostapd_manager)),
       netlink_utils_(netlink_utils),
       scan_utils_(scan_utils) {
-  new_sap_interface = false;
 }
 
 Status Server::RegisterCallback(const sp<IInterfaceEventCallback>& callback) {
@@ -102,7 +102,7 @@ Status Server::UnregisterCallback(const sp<IInterfaceEventCallback>& callback) {
 
 Status Server::createApInterface(sp<IApInterface>* created_interface) {
   InterfaceInfo interface;
-  if (!SetupInterface(&interface, NetlinkUtils::AP_MODE)) {
+  if (!SetupInterface(&interface)) {
     return Status::ok();  // Logging was done internally
   }
 
@@ -122,7 +122,7 @@ Status Server::createApInterface(sp<IApInterface>* created_interface) {
 
 Status Server::createClientInterface(sp<IClientInterface>* created_interface) {
   InterfaceInfo interface;
-  if (!SetupInterface(&interface, NetlinkUtils::STATION_MODE)) {
+  if (!SetupInterface(&interface)) {
     return Status::ok();  // Logging was done internally
   }
 
@@ -229,22 +229,64 @@ Status Server::setHostapdParam(
       *out_success = qsap_hostd_exec(argc, argv) ? false : true;
     } else if (!strcmp(argv[1], "create") &&
                qsap_add_or_remove_interface(argv[2], 1)) {
-      *out_success = new_sap_interface = true;
-    } else if (!strcmp(argv[1], "remove") && new_sap_interface &&
+      *out_success = true;
+    } else if (!strcmp(argv[1], "remove") &&
                qsap_add_or_remove_interface(argv[2], 0)) {
       *out_success = true;
-      new_sap_interface = false;
+    } else if (!strcmp(argv[1], "bridge")) {
+      *out_success = !qsap_control_bridge(argc, argv) ? true : false;
+    } else if (!strcmp(argv[1], "startap") &&
+               !strcmp(argv[2], "dual")) {
+      if (argc < 6) {
+        LOG(ERROR) << "Need additional args <bridge, sap0, sap1>";
+        *out_success = false;
+      } else {
+        std::string bridge = (std::string) argv[3];
+        std::string sap0 = (std::string) argv[4];
+        std::string sap1 = (std::string) argv[5];
+        sp<IApInterface> dual_ap_interface = nullptr;
+        if (QcCreateApInterface(vector<uint8_t>(bridge.begin(), bridge.end()),
+                                &ap_interface).isOk() &&
+            QcCreateApInterface(vector<uint8_t>(sap0.begin(), sap0.end()),
+                                &dual_ap_interface).isOk() &&
+            QcCreateApInterface(vector<uint8_t>(sap1.begin(), sap1.end()),
+                                &dual_ap_interface).isOk() &&
+            ap_interface != nullptr &&
+            ap_interface->startHostapd(true, out_success).isOk()) {
+          *out_success = true;
+          LOG(INFO) << "dual hostapd started";
+        } else {
+          *out_success = false;
+          LOG(ERROR) << "Failed to start dual hostapd";
+        }
+      }
+    } else if (!strcmp(argv[1], "stopap") &&
+               !strcmp(argv[2], "dual")) {
+      if (!ap_interfaces_.empty() &&
+          ap_interface != nullptr &&
+          ap_interface->stopHostapd(true, out_success).isOk()) {
+        ap_interfaces_.clear();
+        ap_interface = nullptr;
+        *out_success = true;
+        LOG(INFO) << "hostapd stopped";
+      } else {
+        *out_success = false;
+        LOG(INFO) << "Failed to stop hostapd";
+      }
+    } else if (!strcmp(argv[1], "setsoftap")) {
+      *out_success = qsapsetSoftap(argc, argv) ? false : true;
     }
   } else if (argc > 1) {
     if(!strcmp(argv[1], "startap") &&
         Server::createApInterface(&ap_interface).isOk() &&
-        ap_interface->startHostapd(out_success).isOk()) {
+        ap_interface != nullptr &&
+        ap_interface->startHostapd(false, out_success).isOk()) {
       *out_success = true;
       LOG(INFO) << "hostapd started";
     } else if (!strcmp(argv[1], "stopap")) {
         if (!ap_interfaces_.empty() &&
             ap_interface != nullptr &&
-            ap_interface->stopHostapd(out_success).isOk()) {
+            ap_interface->stopHostapd(false, out_success).isOk()) {
           ap_interfaces_.clear();
           ap_interface = nullptr;
           *out_success = true;
@@ -259,6 +301,76 @@ Status Server::setHostapdParam(
   }
 
   return binder::Status::ok();
+}
+
+bool Server::QcSetupInterface(InterfaceInfo* interface, const char* ifname) {
+  if (!RefreshWiphyIndex()) {
+    return false;
+  }
+
+  netlink_utils_->SubscribeRegDomainChange(
+          wiphy_index_,
+          std::bind(&Server::OnRegDomainChanged,
+          this,
+          _1));
+
+  interfaces_.clear();
+  if (!netlink_utils_->GetInterfaces(wiphy_index_, &interfaces_)) {
+    LOG(ERROR) << "Failed to get interfaces info from kernel";
+    return false;
+  }
+
+  for (const auto& iface : interfaces_) {
+    LOG(ERROR) << iface.name;
+    if (android::base::StartsWith(iface.name, ifname)) {
+      *interface = iface;
+      return true;
+    }
+  }
+
+  // Bridge interface is not part of GetInterfaces. Check this explicitly.
+  uint32_t br_index = if_nametoindex(ifname);
+  char mac_addr[7];
+  if (!br_index) {
+    LOG(ERROR) << "Failed to get requested interface " << strerror(errno);
+  } else if (!linux_get_ifhwaddr(ifname, mac_addr)) {
+    mac_addr[6] = '\0';
+    std::string addr = std::string(mac_addr);
+    *interface = InterfaceInfo(br_index, std::string(ifname),
+                                  vector<uint8_t>(addr.begin(), addr.end()));
+    LOG(INFO) << "Bridged iface found " << ifname;
+    return true;
+  }
+
+  LOG(ERROR) << "No usable interface found with name " << ifname;
+  return false;
+}
+
+Status Server::QcCreateApInterface(
+    const std::vector<uint8_t>& ifname,
+    sp<IApInterface>* created_interface) {
+  InterfaceInfo interface;
+  stringstream ss;
+
+  for (uint8_t b : ifname) {
+    ss << b;
+  }
+  if (!QcSetupInterface(&interface, (ss.str()).c_str())) {
+    return Status::ok();  // Logging was done internally
+  }
+
+  unique_ptr<ApInterfaceImpl> ap_interface(new ApInterfaceImpl(
+      interface.name,
+      interface.index,
+      netlink_utils_,
+      if_tool_.get(),
+      hostapd_manager_.get(),
+      this));
+  *created_interface = ap_interface->GetBinder();
+  ap_interfaces_.push_back(std::move(ap_interface));
+  BroadcastApInterfaceReady(ap_interfaces_.back()->GetBinder());
+
+  return Status::ok();
 }
 
 status_t Server::dump(int fd, const Vector<String16>& /*args*/) {
@@ -308,15 +420,16 @@ void Server::MarkDownAllInterfaces() {
 
 void Server::CleanUpSystemState() {
   supplicant_manager_->StopSupplicant();
-  hostapd_manager_->StopHostapd();
+  hostapd_manager_->StopHostapd(false);
+  hostapd_manager_->StopHostapd(true);
   MarkDownAllInterfaces();
 }
 
-bool Server::SetupInterface(InterfaceInfo* interface, NetlinkUtils::InterfaceMode mode) {
-  if (!new_sap_interface && (!ap_interfaces_.empty() || !client_interfaces_.empty())) {
+bool Server::SetupInterface(InterfaceInfo* interface) {
+  if (!client_interfaces_.empty()) {
     // In the future we may support multiple interfaces at once.  However,
     // today, we support just one.
-    LOG(ERROR) << "Cannot create AP interface when other interfaces exist";
+    LOG(ERROR) << "Cannot create STA interface when other interfaces exist";
     return false;
   }
 
@@ -337,16 +450,6 @@ bool Server::SetupInterface(InterfaceInfo* interface, NetlinkUtils::InterfaceMod
   }
 
   for (const auto& iface : interfaces_) {
-    // Set interface to softap* only when requested mode is AP_MODE
-    // Note that this has no impact on interface creation and on cleanup
-    // interface mode should be set to STATION_MODE. Change to AP_MODE
-    // is internal to hostapd and we don't need to bother at this point.
-    if (new_sap_interface && mode == NetlinkUtils::AP_MODE &&
-        android::base::StartsWith(iface.name, "softap")) {
-      *interface = iface;
-      return true;
-    }
-
     // Some kernel/driver uses station type for p2p interface.
     // In that case we can only rely on hard-coded name to exclude
     // p2p interface from station interfaces.

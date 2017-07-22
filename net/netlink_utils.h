@@ -139,11 +139,8 @@ class NL80211Packet;
 // Provides NL80211 helper functions.
 class NetlinkUtils {
  public:
-  // Add AP mode to support STA + SAP concurrency and to indicate
-  // if new SetupInterface is of type STA or AP
   enum InterfaceMode{
       STATION_MODE,
-      AP_MODE
   };
 
   explicit NetlinkUtils(NetlinkManager* netlink_manager);

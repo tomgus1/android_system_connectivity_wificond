@@ -25,12 +25,14 @@ interface IApInterface {
   const int ENCRYPTION_TYPE_WPA2 = 2;
 
   // Start up an instance of hostapd associated with this interface.
+  // @ param true if, start ap in dual sap mode else false
   // @return true on success.
-  boolean startHostapd();
+  boolean startHostapd(boolean isDualMode);
 
   // Stop a previously started instance of hostapd.
+  // @ param true if, stop ap in dual sap mode else false
   // @return true on success.
-  boolean stopHostapd();
+  boolean stopHostapd(boolean isDualMode);
 
   // Write out a configuration file for hostapd.  This will be used on the next
   // successful call to StartHostapd().  Returns true on success.

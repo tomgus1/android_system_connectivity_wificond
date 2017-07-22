@@ -54,8 +54,8 @@ class ApInterfaceImpl {
   // Get a pointer to the binder representing this ApInterfaceImpl.
   android::sp<android::net::wifi::IApInterface> GetBinder() const;
 
-  bool StartHostapd();
-  bool StopHostapd();
+  bool StartHostapd(bool dual_mode);
+  bool StopHostapd(bool dual_mode);
   bool WriteHostapdConfig(
       const std::vector<uint8_t>& ssid,
       bool is_hidden,

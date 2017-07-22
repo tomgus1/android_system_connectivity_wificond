@@ -36,8 +36,8 @@ class ApInterfaceBinder : public android::net::wifi::BnApInterface {
   // by remote processes are possible.
   void NotifyImplDead() { impl_ = nullptr; }
 
-  binder::Status startHostapd(bool* out_success) override;
-  binder::Status stopHostapd(bool* out_success) override;
+  binder::Status startHostapd(bool dual_mode, bool* out_success) override;
+  binder::Status stopHostapd(bool dual_mode, bool* out_success) override;
   binder::Status writeHostapdConfig(const std::vector<uint8_t>& ssid,
                                     bool is_hidden,
                                     int32_t channel,
