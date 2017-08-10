@@ -24,6 +24,7 @@
 #include <binder/IPCThreadState.h>
 #include <binder/PermissionCache.h>
 
+#include "qsap_api.h"
 #include "wificond/logging_utils.h"
 #include "wificond/net/netlink_utils.h"
 #include "wificond/scanning/scan_utils.h"
@@ -187,6 +188,72 @@ Status Server::GetApInterfaces(vector<sp<IBinder>>* out_ap_interfaces) {
   for (auto& it : ap_interfaces_) {
     out_ap_interfaces->push_back(asBinder(it->GetBinder()));
   }
+  return binder::Status::ok();
+}
+
+Status Server::setHostapdParam(
+    const std::vector<uint8_t>& cmd,
+    bool* out_success) {
+  *out_success = false;
+  const int max_arg_size = 10;
+  char *data[max_arg_size];
+  char **argv = data;
+  int argc = 0;
+  static sp<IApInterface> ap_interface = nullptr;
+  stringstream ss;
+
+  for (uint8_t b : cmd) {
+    ss << b;
+  }
+  LOG(INFO) << "Command: " << ss.str() << " (len=" << cmd.size() << ")";
+
+  /* Tokenize command to char array */
+  std::istringstream buf(ss.str());
+  std::istream_iterator<std::string> beg(buf), end;
+  std::vector<std::string> tokens(beg, end);
+
+  for(auto& s: tokens) {
+    if (argc >= max_arg_size) {
+        LOG(ERROR) << "Command too long";
+        return binder::Status::ok();
+    }
+    data[argc] = strdup(s.c_str());
+    argc++;
+  }
+
+  if (argc > 2) {
+    if (!strcmp(argv[1], "qccmd")) {
+      *out_success = qsap_hostd_exec(argc, argv) ? false : true;
+    } else if (!strcmp(argv[1], "create") &&
+               qsap_add_or_remove_interface(argv[2], 1)) {
+      *out_success = true;
+    } else if (!strcmp(argv[1], "remove") &&
+               qsap_add_or_remove_interface(argv[2], 0)) {
+      *out_success = true;
+    }
+  } else if (argc > 1) {
+    if(!strcmp(argv[1], "startap") &&
+        Server::createApInterface(&ap_interface).isOk() &&
+        ap_interface->startHostapd(out_success).isOk()) {
+      *out_success = true;
+      LOG(INFO) << "hostapd started";
+    } else if (!strcmp(argv[1], "stopap")) {
+        if (!ap_interfaces_.empty() &&
+            ap_interface != nullptr &&
+            ap_interface->stopHostapd(out_success).isOk()) {
+          ap_interfaces_.clear();
+          ap_interface = nullptr;
+          *out_success = true;
+          LOG(INFO) << "hostapd stopped";
+        } else {
+          *out_success = false;
+          LOG(INFO) << "Failed to stop hostapd";
+        }
+    }
+  } else {
+    LOG(ERROR) << "Wrong/Unknown command: " << ss.str();
+  }
+
   return binder::Status::ok();
 }
 

@@ -67,4 +67,11 @@ interface IWificond {
     // @param rttClient object to remove from the set of registered
     // IRttClient callbacks.
     void unregisterRttClient(IRttClient rttClient);
+
+
+    // Write a hostpad configuration to conf file. This will be used
+    // to set params before StartHostapd(). Return true on success.
+    //
+    // @param cmd to carry string of bytes command (e.g. "set channel=36").
+    boolean setHostapdParam(in byte[] cmd);
 }
