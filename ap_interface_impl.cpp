@@ -113,6 +113,7 @@ bool ApInterfaceImpl::StopHostapd() {
   return true;
 }
 
+#ifndef CONFIG_QSAP_SUPPORT
 bool ApInterfaceImpl::WriteHostapdConfig(const vector<uint8_t>& ssid,
                                          bool is_hidden,
                                          int32_t channel,
@@ -127,6 +128,7 @@ bool ApInterfaceImpl::WriteHostapdConfig(const vector<uint8_t>& ssid,
 
   return hostapd_manager_->WriteHostapdConfig(config);
 }
+#else
 
 bool ApInterfaceImpl::QcWriteHostapdConfig(const vector<uint8_t>& ssid,
                                            bool is_hidden,
@@ -137,6 +139,11 @@ bool ApInterfaceImpl::QcWriteHostapdConfig(const vector<uint8_t>& ssid,
   char *data[10];
   char **argv = data;
   std::stringstream ss;
+  char *start,*end;
+  char ctrl_interface[255];
+  char cmdbuf[255];
+  char respbuf[255];
+  uint32_t  rlen = 255;
 
   for (uint8_t b : ssid) {
     ss << b;
@@ -174,12 +181,25 @@ bool ApInterfaceImpl::QcWriteHostapdConfig(const vector<uint8_t>& ssid,
   }
   bool status = !qsapsetSoftap(argc, argv);
 
+/* Writing ctlr_interface path in config file */
+  string config = hostapd_manager_->CreateHostapdConfig(
+      interface_name_, ssid, is_hidden, channel, encryption_type, passphrase);
+  start = strstr((char*)config.c_str(),"ctrl_interface");
+  end = strchr(start,'\n');
+  strncpy(ctrl_interface, start, (end - start));
+  snprintf(cmdbuf, 255," set %s",ctrl_interface);
+  (void) qsap_hostd_exec_cmd(cmdbuf, respbuf, &rlen);
+  if(strncmp("success", respbuf, rlen) != 0) {
+      LOG(INFO) << "Failed to set ctrl_interface \n";
+  }
+
   // done with data, free it now.
   while (argc--)
     free(data[argc]);
 
   return status;
 }
+#endif
 
 void ApInterfaceImpl::OnStationEvent(StationEvent event,
                                      const vector<uint8_t>& mac_address) {

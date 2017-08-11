@@ -81,8 +81,13 @@ binder::Status ApInterfaceBinder::writeHostapdConfig(
       return binder::Status::ok();
   }
 
+#ifdef CONFIG_QSAP_SUPPORT
   *out_success = impl_->QcWriteHostapdConfig(
       ssid, is_hidden, channel, encryption_type, passphrase);
+#else
+  *out_success = impl_->WriteHostapdConfig(
+      ssid, is_hidden, channel, encryption_type, passphrase);
+#endif
 
   return binder::Status::ok();
 }

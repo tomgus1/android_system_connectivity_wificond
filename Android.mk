@@ -18,6 +18,7 @@ wificond_parent_dir := $(LOCAL_PATH)/../
 wificond_includes := \
     $(wificond_parent_dir)
 
+L_CPPFLAGS := -DCONFIG_QSAP_SUPPORT=1
 
 ###
 ### wificond daemon.
@@ -26,6 +27,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := wificond
 LOCAL_CPPFLAGS := $(wificond_cpp_flags)
 LOCAL_INIT_RC := wificond.rc
+LOCAL_CFLAGS := $(L_CPPFLAGS)
 LOCAL_C_INCLUDES := $(wificond_includes)
 LOCAL_SRC_FILES := \
     main.cpp
@@ -52,6 +54,7 @@ include $(BUILD_EXECUTABLE)
 include $(CLEAR_VARS)
 LOCAL_MODULE := libwificond
 LOCAL_CPPFLAGS := $(wificond_cpp_flags)
+LOCAL_CFLAGS := $(L_CPPFLAGS)
 LOCAL_C_INCLUDES := $(wificond_includes)
 ifeq ($(BOARD_HAS_QCOM_WLAN), true)
   LOCAL_C_INCLUDES += $(TARGET_OUT_HEADERS)/sdk/softap/include

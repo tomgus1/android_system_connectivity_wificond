@@ -19,6 +19,8 @@
 
 #include <string>
 #include <vector>
+#include <iostream>
+#include <cstring>
 
 #include <android-base/macros.h>
 #include <wifi_system/hostapd_manager.h>
