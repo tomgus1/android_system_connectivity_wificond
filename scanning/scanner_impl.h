@@ -25,6 +25,8 @@
 #include "android/net/wifi/BnWifiScannerImpl.h"
 #include "wificond/net/netlink_utils.h"
 #include "wificond/scanning/offload/offload_scan_manager.h"
+#include "wificond/scanning/scan_utils.h"
+#include "wificond/scanning/offload_scan_callback_interface_impl.h"
 
 namespace android {
 namespace wificond {
@@ -32,16 +34,15 @@ namespace wificond {
 class ClientInterfaceImpl;
 class OffloadServiceUtils;
 class ScanUtils;
+class OffloadScanCallbackInterfaceImpl;
 
 class ScannerImpl : public android::net::wifi::BnWifiScannerImpl {
  public:
-  ScannerImpl(uint32_t wiphy_index,
-              uint32_t interface_index,
+  ScannerImpl(uint32_t wiphy_index, uint32_t interface_index,
               const ScanCapabilities& scan_capabilities,
               const WiphyFeatures& wiphy_features,
               ClientInterfaceImpl* client_interface,
-              NetlinkUtils* netlink_utils,
-              ScanUtils* scan_utils,
+              NetlinkUtils* netlink_utils, ScanUtils* scan_utils,
               std::weak_ptr<OffloadServiceUtils> offload_service_utils);
   ~ScannerImpl();
   // Returns a vector of available frequencies for 2.4GHz channels.
@@ -71,19 +72,19 @@ class ScannerImpl : public android::net::wifi::BnWifiScannerImpl {
       const ::android::sp<::android::net::wifi::IScanEvent>& handler) override;
   ::android::binder::Status unsubscribeScanEvents() override;
   ::android::binder::Status subscribePnoScanEvents(
-      const ::android::sp<::android::net::wifi::IPnoScanEvent>& handler) override;
+      const ::android::sp<::android::net::wifi::IPnoScanEvent>& handler)
+      override;
   ::android::binder::Status unsubscribePnoScanEvents() override;
+  void OnOffloadScanResult();
+  void OnOffloadError(
+      OffloadScanCallbackInterface::AsyncErrorReason error_code);
   void Invalidate();
 
  private:
   bool CheckIsValid();
-  void OnOffloadScanResult(
-      std::vector<::com::android::server::wifi::wificond::NativeScanResult>);
-  void OnScanResultsReady(
-      uint32_t interface_index,
-      bool aborted,
-      std::vector<std::vector<uint8_t>>& ssids,
-      std::vector<uint32_t>& frequencies);
+  void OnScanResultsReady(uint32_t interface_index, bool aborted,
+                          std::vector<std::vector<uint8_t>>& ssids,
+                          std::vector<uint32_t>& frequencies);
   void OnSchedScanResultsReady(uint32_t interface_index, bool scan_stopped);
   void LogSsidList(std::vector<std::vector<uint8_t>>& ssid_list,
                    std::string prefix);
@@ -94,16 +95,20 @@ class ScannerImpl : public android::net::wifi::BnWifiScannerImpl {
   bool StopPnoScanDefault();
   bool StopPnoScanOffload();
   void ParsePnoSettings(
-    const ::com::android::server::wifi::wificond::PnoSettings& pno_settings,
-    std::vector<std::vector<uint8_t>>* scan_ssids,
-    std::vector<std::vector<uint8_t>>* match_ssids,
-    std::vector<uint32_t>* freqs,
-    std::vector<uint8_t>* match_security);
+      const ::com::android::server::wifi::wificond::PnoSettings& pno_settings,
+      std::vector<std::vector<uint8_t>>* scan_ssids,
+      std::vector<std::vector<uint8_t>>* match_ssids,
+      std::vector<uint32_t>* freqs, std::vector<uint8_t>* match_security);
+  SchedScanIntervalSetting GenerateIntervalSetting(
+    const ::com::android::server::wifi::wificond::PnoSettings& pno_settings) const;
+
   // Boolean variables describing current scanner status.
   bool valid_;
   bool scan_started_;
   bool pno_scan_started_;
   bool offload_scan_supported_;
+  bool pno_scan_running_over_offload_;
+  ::com::android::server::wifi::wificond::PnoSettings pno_settings_;
 
   const uint32_t wiphy_index_;
   const uint32_t interface_index_;
