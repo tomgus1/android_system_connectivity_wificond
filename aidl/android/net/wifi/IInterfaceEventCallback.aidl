@@ -31,4 +31,6 @@ interface IInterfaceEventCallback {
   // is automatically unregistered.
   oneway void OnClientTorndownEvent(IClientInterface network_interface);
   oneway void OnApTorndownEvent(IApInterface network_interface);
+//aidl interface call to send sta mac and status to framework
+  oneway void OnSoftApClientEvent(in byte[] client_mac_addr, boolean connect_status);
 }

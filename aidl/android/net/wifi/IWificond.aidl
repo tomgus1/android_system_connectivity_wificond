@@ -56,9 +56,24 @@ interface IWificond {
     // @param callback object to remove from the set of registered callbacks.
     oneway void UnregisterCallback(IInterfaceEventCallback callback);
 
+
     // Write a hostpad configuration to conf file. This will be used
     // to set params before StartHostapd(). Return true on success.
     //
     // @param cmd to carry string of bytes command (e.g. "set channel=36").
     boolean setHostapdParam(in byte[] cmd);
+
+    // Tear down all existing STA interfaces. This should enable clients to
+    // create future STA interfaces immediately after this method returns.
+    void tearDownStaInterfaces();
+
+    // Tear down all existing AP interfaces. This should enable clients to
+    // create future AP interfaces immediately after this method returns.
+    void tearDownApInterfaces();
+
+    // Create an Ap interface suitable for use as an AP based on the input
+    // interface name.
+    //
+    // @param interface name of AP as vector of bytes.
+    @nullable IApInterface QcCreateApInterface(in byte[] ifname);
 }

@@ -17,6 +17,9 @@
 #include "wificond/server.h"
 
 #include <sstream>
+#include <iomanip>
+#include <string.h>
+#include <net/if.h>
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
@@ -53,6 +56,7 @@ namespace wificond {
 namespace {
 
 constexpr const char* kPermissionDump = "android.permission.DUMP";
+constexpr const char* kBaseIfName = "wlan0";
 
 }  // namespace
 
@@ -61,7 +65,8 @@ Server::Server(unique_ptr<InterfaceTool> if_tool,
                unique_ptr<HostapdManager> hostapd_manager,
                NetlinkUtils* netlink_utils,
                ScanUtils* scan_utils)
-    : if_tool_(std::move(if_tool)),
+    : base_ifname_(kBaseIfName),
+      if_tool_(std::move(if_tool)),
       supplicant_manager_(std::move(supplicant_manager)),
       hostapd_manager_(std::move(hostapd_manager)),
       netlink_utils_(netlink_utils),
@@ -106,7 +111,8 @@ Status Server::createApInterface(sp<IApInterface>* created_interface) {
       interface.index,
       netlink_utils_,
       if_tool_.get(),
-      hostapd_manager_.get()));
+      hostapd_manager_.get(),
+      this));
   *created_interface = ap_interface->GetBinder();
   ap_interfaces_.push_back(std::move(ap_interface));
   BroadcastApInterfaceReady(ap_interfaces_.back()->GetBinder());
@@ -150,6 +156,24 @@ Status Server::tearDownInterfaces() {
   MarkDownAllInterfaces();
 
   netlink_utils_->UnsubscribeRegDomainChange(wiphy_index_);
+
+  return Status::ok();
+}
+
+Status Server::tearDownStaInterfaces() {
+  for (auto& it : client_interfaces_) {
+    BroadcastClientInterfaceTornDown(it->GetBinder());
+  }
+  client_interfaces_.clear();
+
+  return Status::ok();
+}
+
+Status Server::tearDownApInterfaces() {
+  for (auto& it : ap_interfaces_) {
+    BroadcastApInterfaceTornDown(it->GetBinder());
+  }
+  ap_interfaces_.clear();
 
   return Status::ok();
 }
@@ -209,17 +233,60 @@ Status Server::setHostapdParam(
     } else if (!strcmp(argv[1], "remove") &&
                qsap_add_or_remove_interface(argv[2], 0)) {
       *out_success = true;
+    } else if (!strcmp(argv[1], "bridge")) {
+      *out_success = !qsap_control_bridge(argc, argv) ? true : false;
+    } else if (!strcmp(argv[1], "startap") &&
+               !strcmp(argv[2], "dual")) {
+      if (argc < 6) {
+        LOG(ERROR) << "Need additional args <bridge, sap0, sap1>";
+        *out_success = false;
+      } else {
+        std::string bridge = (std::string) argv[3];
+        std::string sap0 = (std::string) argv[4];
+        std::string sap1 = (std::string) argv[5];
+        sp<IApInterface> dual_ap_interface = nullptr;
+        if (QcCreateApInterface(vector<uint8_t>(bridge.begin(), bridge.end()),
+                                &ap_interface).isOk() &&
+            QcCreateApInterface(vector<uint8_t>(sap0.begin(), sap0.end()),
+                                &dual_ap_interface).isOk() &&
+            QcCreateApInterface(vector<uint8_t>(sap1.begin(), sap1.end()),
+                                &dual_ap_interface).isOk() &&
+            ap_interface != nullptr &&
+            ap_interface->startHostapd(true, out_success).isOk()) {
+          *out_success = true;
+          LOG(INFO) << "dual hostapd started";
+        } else {
+          *out_success = false;
+          LOG(ERROR) << "Failed to start dual hostapd";
+        }
+      }
+    } else if (!strcmp(argv[1], "stopap") &&
+               !strcmp(argv[2], "dual")) {
+      if (!ap_interfaces_.empty() &&
+          ap_interface != nullptr &&
+          ap_interface->stopHostapd(true, out_success).isOk()) {
+        ap_interfaces_.clear();
+        ap_interface = nullptr;
+        *out_success = true;
+        LOG(INFO) << "hostapd stopped";
+      } else {
+        *out_success = false;
+        LOG(INFO) << "Failed to stop hostapd";
+      }
+    } else if (!strcmp(argv[1], "setsoftap")) {
+      *out_success = qsapsetSoftap(argc, argv) ? false : true;
     }
   } else if (argc > 1) {
     if(!strcmp(argv[1], "startap") &&
         Server::createApInterface(&ap_interface).isOk() &&
-        ap_interface->startHostapd(out_success).isOk()) {
+        ap_interface != nullptr &&
+        ap_interface->startHostapd(false, out_success).isOk()) {
       *out_success = true;
       LOG(INFO) << "hostapd started";
     } else if (!strcmp(argv[1], "stopap")) {
         if (!ap_interfaces_.empty() &&
             ap_interface != nullptr &&
-            ap_interface->stopHostapd(out_success).isOk()) {
+            ap_interface->stopHostapd(false, out_success).isOk()) {
           ap_interfaces_.clear();
           ap_interface = nullptr;
           *out_success = true;
@@ -234,6 +301,76 @@ Status Server::setHostapdParam(
   }
 
   return binder::Status::ok();
+}
+
+bool Server::QcSetupInterface(InterfaceInfo* interface, const char* ifname) {
+  if (!RefreshWiphyIndex()) {
+    return false;
+  }
+
+  netlink_utils_->SubscribeRegDomainChange(
+          wiphy_index_,
+          std::bind(&Server::OnRegDomainChanged,
+          this,
+          _1));
+
+  interfaces_.clear();
+  if (!netlink_utils_->GetInterfaces(wiphy_index_, &interfaces_)) {
+    LOG(ERROR) << "Failed to get interfaces info from kernel";
+    return false;
+  }
+
+  for (const auto& iface : interfaces_) {
+    LOG(ERROR) << iface.name;
+    if (android::base::StartsWith(iface.name, ifname)) {
+      *interface = iface;
+      return true;
+    }
+  }
+
+  // Bridge interface is not part of GetInterfaces. Check this explicitly.
+  uint32_t br_index = if_nametoindex(ifname);
+  char mac_addr[7];
+  if (!br_index) {
+    LOG(ERROR) << "Failed to get requested interface " << strerror(errno);
+  } else if (!linux_get_ifhwaddr(ifname, mac_addr)) {
+    mac_addr[6] = '\0';
+    std::string addr = std::string(mac_addr);
+    *interface = InterfaceInfo(br_index, std::string(ifname),
+                                  vector<uint8_t>(addr.begin(), addr.end()));
+    LOG(INFO) << "Bridged iface found " << ifname;
+    return true;
+  }
+
+  LOG(ERROR) << "No usable interface found with name " << ifname;
+  return false;
+}
+
+Status Server::QcCreateApInterface(
+    const std::vector<uint8_t>& ifname,
+    sp<IApInterface>* created_interface) {
+  InterfaceInfo interface;
+  stringstream ss;
+
+  for (uint8_t b : ifname) {
+    ss << b;
+  }
+  if (!QcSetupInterface(&interface, (ss.str()).c_str())) {
+    return Status::ok();  // Logging was done internally
+  }
+
+  unique_ptr<ApInterfaceImpl> ap_interface(new ApInterfaceImpl(
+      interface.name,
+      interface.index,
+      netlink_utils_,
+      if_tool_.get(),
+      hostapd_manager_.get(),
+      this));
+  *created_interface = ap_interface->GetBinder();
+  ap_interfaces_.push_back(std::move(ap_interface));
+  BroadcastApInterfaceReady(ap_interfaces_.back()->GetBinder());
+
+  return Status::ok();
 }
 
 status_t Server::dump(int fd, const Vector<String16>& /*args*/) {
@@ -273,7 +410,7 @@ status_t Server::dump(int fd, const Vector<String16>& /*args*/) {
 void Server::MarkDownAllInterfaces() {
   uint32_t wiphy_index;
   vector<InterfaceInfo> interfaces;
-  if (netlink_utils_->GetWiphyIndex(&wiphy_index) &&
+  if (netlink_utils_->GetWiphyIndexWithInterfaceName(base_ifname_, &wiphy_index) &&
       netlink_utils_->GetInterfaces(wiphy_index, &interfaces)) {
     for (InterfaceInfo& interface : interfaces) {
       if_tool_->SetUpState(interface.name.c_str(), false);
@@ -283,15 +420,16 @@ void Server::MarkDownAllInterfaces() {
 
 void Server::CleanUpSystemState() {
   supplicant_manager_->StopSupplicant();
-  hostapd_manager_->StopHostapd();
+  hostapd_manager_->StopHostapd(false);
+  hostapd_manager_->StopHostapd(true);
   MarkDownAllInterfaces();
 }
 
 bool Server::SetupInterface(InterfaceInfo* interface) {
-  if (!ap_interfaces_.empty() || !client_interfaces_.empty()) {
+  if (!client_interfaces_.empty()) {
     // In the future we may support multiple interfaces at once.  However,
     // today, we support just one.
-    LOG(ERROR) << "Cannot create AP interface when other interfaces exist";
+    LOG(ERROR) << "Cannot create STA interface when other interfaces exist";
     return false;
   }
 
@@ -317,8 +455,11 @@ bool Server::SetupInterface(InterfaceInfo* interface) {
     // p2p interface from station interfaces.
     // Currently NAN interfaces also use station type.
     // We should blacklist NAN interfaces as well.
+    // Also we would not prefer to use softap* interfaces for Station
+    // mode.
     if (iface.name != "p2p0" &&
-        !android::base::StartsWith(iface.name, "aware_data")) {
+        !android::base::StartsWith(iface.name, "aware_data") &&
+        !android::base::StartsWith(iface.name, "softap")) {
       *interface = iface;
       return true;
     }
@@ -329,7 +470,7 @@ bool Server::SetupInterface(InterfaceInfo* interface) {
 }
 
 bool Server::RefreshWiphyIndex() {
-  if (!netlink_utils_->GetWiphyIndex(&wiphy_index_)) {
+  if (!netlink_utils_->GetWiphyIndexWithInterfaceName(base_ifname_, &wiphy_index_)) {
     LOG(ERROR) << "Failed to get wiphy index";
     return false;
   }
@@ -400,6 +541,12 @@ void Server::BroadcastApInterfaceTornDown(
     it->OnApTorndownEvent(network_interface);
   }
 }
+void Server::BroadcastSoftApClientConnectStatus(const vector<uint8_t>& mac_address, bool connect_status) {
+  for (auto& it : interface_event_callbacks_) {
+    it->OnSoftApClientEvent(mac_address, connect_status);
+  }
+}
+
 
 }  // namespace wificond
 }  // namespace android

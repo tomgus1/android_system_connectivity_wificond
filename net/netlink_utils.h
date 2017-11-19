@@ -139,10 +139,8 @@ class NL80211Packet;
 // Provides NL80211 helper functions.
 class NetlinkUtils {
  public:
-  // Currently we only support setting the interface to STATION mode.
-  // This is used for cleaning up interface after KILLING hostapd.
   enum InterfaceMode{
-      STATION_MODE
+      STATION_MODE,
   };
 
   explicit NetlinkUtils(NetlinkManager* netlink_manager);
@@ -152,6 +150,18 @@ class NetlinkUtils {
   // |*out_wiphy_index| returns the wiphy index from kernel.
   // Returns true on success.
   virtual bool GetWiphyIndex(uint32_t* out_wiphy_index);
+
+  // Get a list of wiphy indices for all registered wiphys from kernel.
+  // |*wiphy_index_list| returns the list of indices
+  // Returns true on success
+  virtual bool GetWiphyIndices(std::vector<uint32_t>* wiphy_index_list);
+
+  // Get a wiphy index that contains an interface with base name.
+  // |base_ifname| is the name of interface to search for
+  // |*out_wiphy_index| returns the wiphy index from kernel.
+  // Returns true on success
+  virtual bool GetWiphyIndexWithInterfaceName(const std::string base_ifname,
+                                              uint32_t* out_wiphy_index);
 
   // Get wifi interfaces info from kernel.
   // |wiphy_index| is the wiphy index we get using GetWiphyIndex().

@@ -15,6 +15,7 @@
  */
 
 #include "wificond/ap_interface_impl.h"
+#include "wificond/server.h"
 
 #include <android-base/logging.h>
 
@@ -45,12 +46,14 @@ ApInterfaceImpl::ApInterfaceImpl(const string& interface_name,
                                  uint32_t interface_index,
                                  NetlinkUtils* netlink_utils,
                                  InterfaceTool* if_tool,
-                                 HostapdManager* hostapd_manager)
+                                 HostapdManager* hostapd_manager,
+                                 Server* server)
     : interface_name_(interface_name),
       interface_index_(interface_index),
       netlink_utils_(netlink_utils),
       if_tool_(if_tool),
       hostapd_manager_(hostapd_manager),
+      server_(server),
       binder_(new ApInterfaceBinder(this)),
       number_of_associated_stations_(0) {
   // This log keeps compiler happy.
@@ -83,13 +86,13 @@ void ApInterfaceImpl::Dump(std::stringstream* ss) const {
   *ss << "------- Dump End -------" << endl;
 }
 
-bool ApInterfaceImpl::StartHostapd() {
-  return hostapd_manager_->StartHostapd();
+bool ApInterfaceImpl::StartHostapd(bool dual_mode) {
+  return hostapd_manager_->StartHostapd(dual_mode);
 }
 
-bool ApInterfaceImpl::StopHostapd() {
+bool ApInterfaceImpl::StopHostapd(bool dual_mode) {
   // Drop SIGKILL on hostapd.
-  if (!hostapd_manager_->StopHostapd()) {
+  if (!hostapd_manager_->StopHostapd(dual_mode)) {
     // Logging was done internally.
     return false;
   }
@@ -97,16 +100,6 @@ bool ApInterfaceImpl::StopHostapd() {
   // Take down the interface.
   if (!if_tool_->SetUpState(interface_name_.c_str(), false)) {
     // Logging was done internally.
-    return false;
-  }
-
-  // Since wificond SIGKILLs hostapd, hostapd has no chance to handle
-  // the cleanup.
-  // Besides taking down the interface, we also need to set the interface mode
-  // back to station mode for the cleanup.
-  if (!netlink_utils_->SetInterfaceMode(interface_index_,
-                                        NetlinkUtils::STATION_MODE)) {
-    LOG(ERROR) << "Failed to set interface back to station mode";
     return false;
   }
 
@@ -203,11 +196,13 @@ bool ApInterfaceImpl::QcWriteHostapdConfig(const vector<uint8_t>& ssid,
 
 void ApInterfaceImpl::OnStationEvent(StationEvent event,
                                      const vector<uint8_t>& mac_address) {
+  bool client_conn_status = false;
   if (event == NEW_STATION) {
     LOG(INFO) << "New station "
               << LoggingUtils::GetMacString(mac_address)
               << " associated with hotspot";
     number_of_associated_stations_++;
+    client_conn_status = true;
   } else if (event == DEL_STATION) {
     LOG(INFO) << "Station "
               << LoggingUtils::GetMacString(mac_address)
@@ -219,6 +214,7 @@ void ApInterfaceImpl::OnStationEvent(StationEvent event,
       number_of_associated_stations_--;
     }
   }
+  server_->BroadcastSoftApClientConnectStatus(mac_address, client_conn_status);
 }
 
 int ApInterfaceImpl::GetNumberOfAssociatedStations() const {
