@@ -70,6 +70,16 @@ class ScanUtils {
       uint32_t interface_index,
       std::vector<::com::android::server::wifi::wificond::NativeScanResult>* out_scan_results);
 
+#ifdef CONFIG_WIFI_GBK
+  // Get GBK ssid convert history
+  // A SSID vector will be returned by |*out_ssid|.
+  // Returns true on success.
+  virtual bool getWifiGbkHistory(
+      uint32_t interface_index,
+      const std::vector<uint8_t>& ssid,
+      std::vector<uint8_t>* out_ssid);
+#endif
+
   // Send scan request to kernel for interface with index |interface_index|.
   // |request_random_mac| is used for asking device/driver to use a random MAC
   // address during scan.
@@ -163,6 +173,10 @@ class ScanUtils {
  private:
   bool GetBssTimestamp(const NL80211NestedAttr& bss,
                        uint64_t* last_seen_since_boot_microseconds);
+#ifdef CONFIG_WIFI_GBK
+  bool ReplaceSSIDFromInfoElement(std::vector<uint8_t>& ie,
+                              const std::vector<uint8_t>& ssid);
+#endif
   bool GetSSIDFromInfoElement(const std::vector<uint8_t>& ie,
                               std::vector<uint8_t>* ssid);
   // Converts a NL80211_CMD_NEW_SCAN_RESULTS packet to a ScanResult object.

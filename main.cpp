@@ -19,6 +19,9 @@
 
 #include <csignal>
 #include <memory>
+#ifdef CONFIG_WIFI_GBK
+#include "IcuUtils.h"
+#endif
 
 #include <android-base/logging.h>
 #include <android-base/macros.h>
@@ -122,6 +125,12 @@ void OnHwBinderReadReady(int fd) {
 int main(int argc, char** argv) {
   android::base::InitLogging(argv, android::base::LogdLogger(android::base::SYSTEM));
   LOG(INFO) << "wificond is starting up...";
+
+#ifdef CONFIG_WIFI_GBK
+  LOG(INFO) << "InitializeIcuOrDie...";
+  InitializeIcuOrDie();
+  LOG(INFO) << "InitializeIcuOrDie finished...";
+#endif
 
   unique_ptr<android::wificond::LooperBackedEventLoop> event_dispatcher(
       new android::wificond::LooperBackedEventLoop());
