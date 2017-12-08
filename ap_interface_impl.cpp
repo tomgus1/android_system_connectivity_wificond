@@ -179,7 +179,7 @@ bool ApInterfaceImpl::QcWriteHostapdConfig(const vector<uint8_t>& ssid,
       interface_name_, ssid, is_hidden, channel, encryption_type, passphrase);
   start = strstr((char*)config.c_str(),"ctrl_interface");
   end = strchr(start,'\n');
-  strncpy(ctrl_interface, start, (end - start));
+  strlcpy(ctrl_interface, start, (end - start) + 1);
   snprintf(cmdbuf, 255," set %s",ctrl_interface);
   (void) qsap_hostd_exec_cmd(cmdbuf, respbuf, &rlen);
   if(strncmp("success", respbuf, rlen) != 0) {
